@@ -105,7 +105,7 @@ class TxnProcessor
     // The following functions are for H-Store
     void HStoreExecuteTxn(Txn* txn);
 
-    void HStorePartitionThreadExecuteTxn(Txn* txn);
+    void HStorePartitionThreadExecuteTxn(Txn* txn, int partition);
 
     void GarbageCollection();
 

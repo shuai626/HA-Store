@@ -16,14 +16,16 @@ TxnProcessor::TxnProcessor(CCMode mode) : mode_(mode), tp_(THREAD_COUNT), next_u
         lm_ = new LockManagerB(&ready_txns_);
     
 
-    /* TODO: If mode_ == H_STORE, then partition the database and spawns StaticThreadPool of 1 thread for each partition.
+    /* TODO: If mode_ == H_STORE, then "partition the database" and spawns StaticThreadPool of 1 thread for each partition.
        Store partition threads inside partition_threads_ defined in txn_processor.h */
     if (mode_ == H_STORE)
     {
         strategy_ = 0;
         abort_count_ = 0;
 
-        // TODO: Implement partitioning here
+        /* TODO: Implement partitioning here. In our implementation, it is sufficient to
+         initiliaze partition_threads_ with <# processor> threads and store the database size or partition section size (database size / <# processor>). 
+         We will assume the database is partitioned into <# processor> contiguous blocks.  */
     }
 
     // Create the storage
@@ -627,6 +629,8 @@ For one-shot/single-site/sterile transactions, the worker thread sends the txn t
     Check the finished queue for results. When results arrive, worker thread will add results to the committed txn list
 For multi-partition transactions, determine which threads own the requested data. 
     Decompose the transaction into subplans. Send each txn to the thread
+        When creating subplans, populate the hstore_start_time_, hstore_subplan_mutex_, and h_store_subplan_cond_ fields
+        To send next subplan and guarantee its run next, add a new method to StaticThreadPool that pushes "priority task" to front of queue
     Command Router receives commits/aborts from threads. It sends the final decision to each thread to formally commit or abort the transaction.
     Track rate of aborts via counter. If the number of aborts exceeds some threshold: then switch to the intermediate strategy via this::strategy_
         We will set an epoch ourselves.
@@ -637,20 +641,26 @@ For multi-partition transactions, determine which threads own the requested data
 }
 
 /* TODO: Implement logic that each partition thread performs. Assume each partition
-   contains a thread pool with 1 thread inside it. Task submission and retrieval is abstracted away */
-void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn)
+   contains a thread pool with 1 thread inside it. Task submission and retrieval is abstracted away.
+   We will use the partition parameter to restrict tasks to only read values inside their partition
+   
+   i.e. if partition = 1, then only read and write values from [ (db_size/ partition_count)*partition, (db_size/ partition_count)*(partition+1) )  */
+void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, int partition)
 {
 /*
 If strategy_ = 0: Implement basic H-Store concurrency control
     For Put() and Expect():
         Commits the transaction and place results inside finished queue
+            Only interact with keys in readset_ and writeset_ inside the provided partition
     For RMW():
         Hold the txn for X time. 
         If any txns come in during X time that have a lower timestamp than X, then abort. 
             Check timestamp by reading all values in queue after X time.
-                We will need to add a new function inside static_thread_pool.h to accomplish this: IsMostRecentTxn(txn)
-        Else, execute the next subplans sent in by the command router. we do not need to hold the subplan again
+                Implement a new function inside static_thread_pool.h to accomplish this: IsMostRecentTxn(txn)
+        Else, execute the next subplans sent in by the command router. we do not need to hold the subplan again (PENDING)
+            Edit: we may need to hold the subplan again. Pending discussion
         Each thread then sends its decision back to the Command Router.
+            Use txn->hstore_subplan_mutex_, and txn->h_store_subplan_cond_ to accomplish this
         Waits for a response back from the command router of whether to commit/abort. 
         If commit, then place results inside a finished queue
 If strategy = 1: Implement intermediate H-Store concurrency control 

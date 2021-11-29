@@ -104,6 +104,13 @@ class Txn
 
     // Start index (used for OCC).
     int64_t occ_start_idx_;
+
+    // Timestamp (used for H-Store).
+    time_t hstore_start_time_;
+
+    // Cond and wait structures (used for H-Store).
+    pthread_mutex_t *hstore_subplan_mutex_;
+    pthread_cond_t *h_store_subplan_cond_;
 };
 
 #endif  // _TXN_H_

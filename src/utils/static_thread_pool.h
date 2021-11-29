@@ -46,12 +46,13 @@ class StaticThreadPool : public ThreadPool
 
     virtual int ThreadCount() { return thread_count_; }
 
-    /* TODO: Add new public method that checks if the queue contains tasks with timestamp earlier than currTxn */
+    /* TODO: Add new public method that checks if the queue contains tasks 
+       with timestamp earlier than currTxn. Use hstore_start_time_ as timestamp */
     bool IsMostRecentTxn(Txn* currTxn) 
     {
-
+        return false;
     }
-    
+
    private:
     void Start()
     {

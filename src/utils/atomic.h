@@ -175,6 +175,19 @@ class AtomicQueue
         mutex_.Unlock();
     }
 
+
+    // TODO: Add AtomicQueue function to push task to front of queue.
+    // This will be useful to guarantee subplans are executed in order without interruption 
+    // for multipartition transaction
+
+    // Atomically insert 'item' onto front of queue.
+    void Push(const T& item)
+    {
+        mutex_.Lock();
+
+        mutex_.Unlock();
+    }
+
     // If the queue is non-empty, (atomically) sets '*result' equal to the front
     // element, pops the front element from the queue, and returns true,
     // otherwise returns false.

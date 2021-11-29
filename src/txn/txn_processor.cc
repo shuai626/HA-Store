@@ -14,6 +14,17 @@ TxnProcessor::TxnProcessor(CCMode mode) : mode_(mode), tp_(THREAD_COUNT), next_u
         lm_ = new LockManagerA(&ready_txns_);
     else if (mode_ == LOCKING)
         lm_ = new LockManagerB(&ready_txns_);
+    
+
+    /* TODO: If mode_ == H_STORE, then partition the database and spawns StaticThreadPool of 1 thread for each partition.
+       Store partition threads inside partition_threads_ defined in txn_processor.h */
+    if (mode_ == H_STORE)
+    {
+        strategy_ = 0;
+        abort_count_ = 0;
+
+        // TODO: Implement partitioning here
+    }
 
     // Create the storage
     if (mode_ == MVCC)
@@ -110,6 +121,8 @@ void TxnProcessor::RunScheduler()
             break;
         case MVCC:
             RunMVCCScheduler();
+        case H_STORE:
+            RunHStoreScheduler();
     }
 }
 
@@ -587,4 +600,64 @@ void TxnProcessor::RunMVCCScheduler()
             tp_.AddTask([this, txn]() { this->MVCCExecuteTxn(txn); });
         }
     }
+}
+
+void TxnProcessor::RunHStoreScheduler()
+{
+    Txn* txn;
+    while (!stopped_)
+    {
+        // Get the next new transaction request (if one is pending) and pass it to an execution thread.
+        if (txn_requests_.Pop(&txn))
+        {
+            // Start txn running in its own thread.
+            tp_.AddTask([this, txn]() { this->HStoreExecuteTxn(txn); });
+        }
+    }
+}
+
+/* TODO: Implement Command Router / transaction coordinator.
+   Coordinator spawns worker thread by calling HStoreExecuteTxn */
+void TxnProcessor::HStoreExecuteTxn(Txn* txn)
+{
+
+/* 
+For one-shot/single-site/sterile transactions, the worker thread sends the txn to the appropriate partition thread.
+    <ThreadPoolFromArray>.AddTask([this, txn]() { this->HStorePartitionThreadExecuteTxn(txn); });
+    Check the finished queue for results. When results arrive, worker thread will add results to the committed txn list
+For multi-partition transactions, determine which threads own the requested data. 
+    Decompose the transaction into subplans. Send each txn to the thread
+    Command Router receives commits/aborts from threads. It sends the final decision to each thread to formally commit or abort the transaction.
+    Track rate of aborts via counter. If the number of aborts exceeds some threshold: then switch to the intermediate strategy via this::strategy_
+        We will set an epoch ourselves.
+    If aborts continue - then switch to advanced this::strategy_
+    If all commit, check the finished queue for results. When results arrive, worker thread will add joined results to the committed txn list
+*/
+
+}
+
+/* TODO: Implement logic that each partition thread performs. Assume each partition
+   contains a thread pool with 1 thread inside it. Task submission and retrieval is abstracted away */
+void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn)
+{
+/*
+If strategy_ = 0: Implement basic H-Store concurrency control
+    For Put() and Expect():
+        Commits the transaction and place results inside finished queue
+    For RMW():
+        Hold the txn for X time. 
+        If any txns come in during X time that have a lower timestamp than X, then abort. 
+            Check timestamp by reading all values in queue after X time.
+                We will need to add a new function inside static_thread_pool.h to accomplish this: IsMostRecentTxn(txn)
+        Else, execute the next subplans sent in by the command router. we do not need to hold the subplan again
+        Each thread then sends its decision back to the Command Router.
+        Waits for a response back from the command router of whether to commit/abort. 
+        If commit, then place results inside a finished queue
+If strategy = 1: Implement intermediate H-Store concurrency control 
+    Double X to increase wait time
+If strategy = 2: Implement advanced H-store concurrency control
+    When running subplan, if plan breaks OCC then abort.
+        Start timestamp is the timestamp received upon entering the system.
+    If commit, then place results inside a finished queue
+*/
 }

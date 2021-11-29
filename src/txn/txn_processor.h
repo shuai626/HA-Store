@@ -28,6 +28,8 @@ enum CCMode
     OCC                    = 3,  // Part 2
     P_OCC                  = 4,  // Part 3
     MVCC                   = 5,  // Part 4
+    
+    H_STORE                = 6,  // Final Project
 };
 
 // Returns a human-readable string naming of the providing mode.
@@ -79,6 +81,9 @@ class TxnProcessor
     // MVCC version of scheduler.
     void RunMVCCScheduler();
 
+    // H-Store version of scheduler.
+    void RunHStoreScheduler();
+
     // Performs all reads required to execute the transaction, then executes the
     // transaction logic.
     void ExecuteTxn(Txn* txn);
@@ -96,6 +101,11 @@ class TxnProcessor
     void MVCCLockWriteKeys(Txn* txn);
 
     void MVCCUnlockWriteKeys(Txn* txn);
+
+    // The following functions are for H-Store
+    void HStoreExecuteTxn(Txn* txn);
+
+    void HStorePartitionThreadExecuteTxn(Txn* txn);
 
     void GarbageCollection();
 
@@ -147,6 +157,17 @@ class TxnProcessor
 
     // Gives us access to the scheduler thread so that we can wait for it to join later.
     pthread_t scheduler_thread_;
+
+    // Partition thread used for H_STORE concurrency implementation
+    // Each partition thread is implemented as a static thread pool of size 1
+    AtomicVector<StaticThreadPool> partition_threads_;
+
+    // Strategy flag used for H_STORE concurrency implementation
+    // 0 = Basic, 1 = Intermediate, 2 = Advanced
+    volatile int strategy_;
+
+    // Abort count to determine strategy for H_STORE concurrency implementation
+    Atomic<int> abort_count_;
 };
 
 #endif  // _TXN_PROCESSOR_H_

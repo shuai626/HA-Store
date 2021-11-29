@@ -22,6 +22,8 @@ string ModeToString(CCMode mode)
             return " OCC-P    ";
         case MVCC:
             return " MVCC     ";
+        case H_STORE:
+            return " H-Store     ";
         default:
             return "INVALID MODE";
     }
@@ -33,6 +35,9 @@ class LoadGen
     virtual ~LoadGen() {}
     virtual Txn* NewTxn() = 0;
 };
+
+/* TODO: Refactor RMWLoadGen, RMWLoadGen2, RMWDynLoadGen, and RMWDynLoadGen2
+   to work with our modified implementation of RMW (see txn_types.h)         */
 
 class RMWLoadGen : public LoadGen
 {
@@ -138,6 +143,11 @@ class RMWDynLoadGen2 : public LoadGen
     vector<double> wait_times_;
 };
 
+/* TODO: Create new subclass of LoadGen for that only perform Put/Expect transactions */
+
+/* TODO: Create new subclass of LoadGen for that perform Put/Expect/RMW transactions. Ideally,
+   include a parameter that can adjust the ratio of Put/Expect v RMW transactions  */
+
 void Benchmark(const vector<LoadGen*>& lg)
 {
     // Number of transaction requests that can be active at any given time.
@@ -145,7 +155,7 @@ void Benchmark(const vector<LoadGen*>& lg)
     deque<Txn*> doneTxns;
 
     // For each MODE...
-    for (CCMode mode = SERIAL; mode <= MVCC; mode = static_cast<CCMode>(mode + 1))
+    for (CCMode mode = SERIAL; mode <= H_STORE; mode = static_cast<CCMode>(mode + 1))
     {
         // Print out mode name.
         cout << ModeToString(mode) << flush;
@@ -205,6 +215,8 @@ void Benchmark(const vector<LoadGen*>& lg)
         cout << endl;
     }
 }
+
+/* TODO: Add new Put/Expect and Put/Expect/RMW modify tests to the benchmarks below  */
 
 int main(int argc, char** argv)
 {

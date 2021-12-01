@@ -8,7 +8,7 @@
 
 TEST(NoopTest)
 {
-    TxnProcessor p(SERIAL);
+    TxnProcessor p(SERIAL, 100000);
 
     Txn* t = new Noop();
     EXPECT_EQ(INCOMPLETE, t->Status());
@@ -24,7 +24,7 @@ TEST(NoopTest)
 
 TEST(PutTest)
 {
-    TxnProcessor p(SERIAL);
+    TxnProcessor p(SERIAL, 100000);
     Txn* t;
 
     std::map<Key, Value> m1 = {{1, 2}};
@@ -54,7 +54,7 @@ TEST(PutTest)
 
 TEST(PutMultipleTest)
 {
-    TxnProcessor p(SERIAL);
+    TxnProcessor p(SERIAL, 100000);
     Txn* t;
 
     map<Key, Value> m;

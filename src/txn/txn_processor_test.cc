@@ -148,7 +148,8 @@ class RMWDynLoadGen2 : public LoadGen
 /* TODO: Create new subclass of LoadGen for that perform Put/Expect/RMW transactions. Ideally,
    include a parameter that can adjust the ratio of Put/Expect v RMW transactions  */
 
-void Benchmark(const vector<LoadGen*>& lg)
+//Generates benchmark with a given database size
+void Benchmark(const vector<LoadGen*>& lg, int dbsize)
 {
     // Number of transaction requests that can be active at any given time.
     int active_txns = 100;
@@ -169,7 +170,7 @@ void Benchmark(const vector<LoadGen*>& lg)
                 int txn_count = 0;
 
                 // Create TxnProcessor in next mode.
-                TxnProcessor* p = new TxnProcessor(mode);
+                TxnProcessor* p = new TxnProcessor(mode, dbsize);
 
                 // Record start time.
                 double start = GetTime();
@@ -235,7 +236,7 @@ int main(int argc, char** argv)
     lg.push_back(new RMWLoadGen(1000000, 5, 0, 0.01));
     lg.push_back(new RMWDynLoadGen(1000000, 5, 0, {0.0001, 0.001, 0.01}));
 
-    Benchmark(lg);
+    Benchmark(lg, 1000000);
     cout << endl;
 
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
@@ -248,7 +249,7 @@ int main(int argc, char** argv)
     lg.push_back(new RMWLoadGen(1000000, 30, 0, 0.01));
     lg.push_back(new RMWDynLoadGen(1000000, 30, 0, {0.0001, 0.001, 0.01}));
 
-    Benchmark(lg);
+    Benchmark(lg, 1000000);
     cout << endl;
 
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
@@ -261,7 +262,7 @@ int main(int argc, char** argv)
     lg.push_back(new RMWLoadGen(100, 5, 0, 0.01));
     lg.push_back(new RMWDynLoadGen(100, 5, 0, {0.0001, 0.001, 0.01}));
 
-    Benchmark(lg);
+    Benchmark(lg, 100);
     cout << endl;
 
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
@@ -274,7 +275,7 @@ int main(int argc, char** argv)
     lg.push_back(new RMWLoadGen(100, 30, 0, 0.01));
     lg.push_back(new RMWDynLoadGen(100, 30, 0, {0.0001, 0.001, 0.01}));
 
-    Benchmark(lg);
+    Benchmark(lg, 100);
     cout << endl;
 
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
@@ -287,7 +288,7 @@ int main(int argc, char** argv)
     lg.push_back(new RMWLoadGen(1000000, 0, 5, 0.01));
     lg.push_back(new RMWDynLoadGen(1000000, 0, 5, {0.0001, 0.001, 0.01}));
 
-    Benchmark(lg);
+    Benchmark(lg, 1000000);
     cout << endl;
 
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
@@ -300,7 +301,7 @@ int main(int argc, char** argv)
     lg.push_back(new RMWLoadGen(1000000, 0, 10, 0.01));
     lg.push_back(new RMWDynLoadGen(1000000, 0, 10, {0.0001, 0.001, 0.01}));
 
-    Benchmark(lg);
+    Benchmark(lg,1000000);
     cout << endl;
 
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
@@ -313,7 +314,7 @@ int main(int argc, char** argv)
     lg.push_back(new RMWLoadGen(100, 0, 5, 0.01));
     lg.push_back(new RMWDynLoadGen(100, 0, 5, {0.0001, 0.001, 0.01}));
 
-    Benchmark(lg);
+    Benchmark(lg, 100);
     cout << endl;
 
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
@@ -326,7 +327,7 @@ int main(int argc, char** argv)
     lg.push_back(new RMWLoadGen(100, 0, 10, 0.01));
     lg.push_back(new RMWDynLoadGen(100, 0, 10, {0.0001, 0.001, 0.01}));
 
-    Benchmark(lg);
+    Benchmark(lg, 100);
     cout << endl;
 
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
@@ -342,7 +343,7 @@ int main(int argc, char** argv)
     lg.push_back(new RMWLoadGen2(50, 30, 10, 0.01));
     lg.push_back(new RMWDynLoadGen2(50, 30, 10, {0.0001, 0.001, 0.01}));
 
-    Benchmark(lg);
+    Benchmark(lg, 50);
     cout << endl;
 
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];

@@ -8,7 +8,10 @@
 // Thread & queue counts for StaticThreadPool initialization.
 #define THREAD_COUNT 8
 
-TxnProcessor::TxnProcessor(CCMode mode) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
+// Number of partitions when using H-STORE
+#define PARTITION_THREAD_COUNT 8
+
+TxnProcessor::TxnProcessor(CCMode mode, int dbsize) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
 {
     if (mode_ == LOCKING_EXCLUSIVE_ONLY)
         lm_ = new LockManagerA(&ready_txns_);
@@ -22,10 +25,18 @@ TxnProcessor::TxnProcessor(CCMode mode) : mode_(mode), tp_(THREAD_COUNT), next_u
     {
         strategy_ = 0;
         abort_count_ = 0;
+        dbsize_ = dbsize;
 
         /* TODO: Implement partitioning here. In our implementation, it is sufficient to
          initiliaze partition_threads_ with <# processor> threads and store the database size or partition section size (database size / <# processor>). 
          We will assume the database is partitioned into <# processor> contiguous blocks.  */
+
+        for (int i = 0; i < PARTITION_THREAD_COUNT; i++) 
+        {
+            StaticThreadPool next(1);
+            partition_threads_.PushValue(next);
+        }
+
     }
 
     // Create the storage
@@ -604,6 +615,17 @@ void TxnProcessor::RunMVCCScheduler()
     }
 }
 
+// This function shows how you can choose the correct partition to find a value given the key
+StaticThreadPool TxnProcessor::GetPartitionThreadPool(Key key) 
+{
+    uint64 chunk_size = (uint64) (dbsize_ / PARTITION_THREAD_COUNT);
+    uint64 index = key / chunk_size;
+
+    StaticThreadPool found = partition_threads_.Get(index);
+
+    return found;
+}
+
 void TxnProcessor::RunHStoreScheduler()
 {
     Txn* txn;
@@ -617,6 +639,7 @@ void TxnProcessor::RunHStoreScheduler()
         }
     }
 }
+
 
 /* TODO: Implement Command Router / transaction coordinator.
    Coordinator spawns worker thread by calling HStoreExecuteTxn */

@@ -181,12 +181,13 @@ class AtomicQueue
     // for multipartition transaction
 
     // Atomically insert 'item' onto front of queue.
-    void Push(const T& item)
+   /* void Push(const T& item)
     {
         mutex_.Lock();
 
         mutex_.Unlock();
     }
+    */
 
     // If the queue is non-empty, (atomically) sets '*result' equal to the front
     // element, pops the front element from the queue, and returns true,
@@ -377,8 +378,24 @@ class AtomicVector
         return value;
     }
 
-    // Atomically inserts the value into the vector.
+    // Same as operator but returns the value not the value located at an address
+    T Get(int id) {
+        mutex_.ReadLock();
+        T value = vec_[id];
+        mutex_.Unlock();
+        return value;
+    }
+
+    // Atomically inserts the value (pointer) into the vector.
     void Push(const T& value)
+    {
+        mutex_.WriteLock();
+        vec_.push_back(value);
+        mutex_.Unlock();
+    }
+
+    // Atomically inserts the value into the vector.
+    void PushValue(const T value)
     {
         mutex_.WriteLock();
         vec_.push_back(value);

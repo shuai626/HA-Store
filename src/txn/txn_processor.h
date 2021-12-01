@@ -40,7 +40,7 @@ class TxnProcessor
    public:
     // The TxnProcessor's constructor starts the TxnProcessor running in the
     // background.
-    explicit TxnProcessor(CCMode mode);
+    explicit TxnProcessor(CCMode mode, int dbsize);
 
     // The TxnProcessor's destructor stops all background threads and deallocates
     // all objects currently owned by the TxnProcessor, except for Txn objects.
@@ -101,6 +101,9 @@ class TxnProcessor
     void MVCCLockWriteKeys(Txn* txn);
 
     void MVCCUnlockWriteKeys(Txn* txn);
+
+    // The logic in this returns the threadpool (single thread) for the correct partition given a key
+    StaticThreadPool GetPartitionThreadPool(Key key);
 
     // The following functions are for H-Store
     void HStoreExecuteTxn(Txn* txn);
@@ -168,6 +171,10 @@ class TxnProcessor
 
     // Abort count to determine strategy for H_STORE concurrency implementation
     Atomic<int> abort_count_;
+
+    // Size of the database for the current test.
+    int dbsize_;
+
 };
 
 #endif  // _TXN_PROCESSOR_H_

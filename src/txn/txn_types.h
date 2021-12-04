@@ -25,7 +25,7 @@ class Noop : public Txn
 // the provided map, commits, else aborts.
 
 /* TODO: Modify Expect to take in a second parameter k, where 0 ≤ k < n. Expect
-   will always acreate a read_set that contains keys across k partitions        */
+   will always acreate a read_set that contains keys across k partitions.       */
 
 class Expect : public Txn
 {
@@ -33,6 +33,14 @@ class Expect : public Txn
     Expect(const map<Key, Value>& m) : m_(m)
     {
         for (map<Key, Value>::iterator it = m_.begin(); it != m_.end(); ++it) readset_.insert(it->first);
+    }
+
+    Expect(const set<Key> s)
+    {
+        std::map<Key,Value> m;
+        std::transform(s.cbegin(), s.cend(), std::inserter(m, begin(m)), [] (const Key &arg) { return std::make_pair(arg, 1);});
+        m_ = m;
+        for (set<Key>::iterator it = s.begin(); it != s.end(); ++it) readset_.insert(*it);
     }
 
     Expect* clone() const
@@ -49,6 +57,7 @@ class Expect : public Txn
         {
             if (!Read(it->first, &result) || result != it->second)
             {
+                // TODO: Remove abort
                 ABORT;
             }
         }

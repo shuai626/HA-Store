@@ -2,12 +2,15 @@
 #include <stdio.h>
 #include <set>
 #include <unordered_set>
+#include <time.h>
+#include <iostream>
 
 #include "lock_manager.h"
 
 // Thread & queue counts for StaticThreadPool initialization.
 #define THREAD_COUNT 8
 
+/* TODO: Change PARTITION_THREAD_COUNT to <# processor> threads  */
 // Number of partitions when using H-STORE
 #define PARTITION_THREAD_COUNT 8
 
@@ -18,25 +21,19 @@ TxnProcessor::TxnProcessor(CCMode mode, int dbsize) : mode_(mode), tp_(THREAD_CO
     else if (mode_ == LOCKING)
         lm_ = new LockManagerB(&ready_txns_);
     
-
-    /* TODO: If mode_ == H_STORE, then "partition the database" and spawns StaticThreadPool of 1 thread for each partition.
-       Store partition threads inside partition_threads_ defined in txn_processor.h */
+    // If mode_ == H_STORE, then "partition the database" and spawns StaticThreadPool of 1 thread for each partition.
     if (mode_ == H_STORE)
     {
         strategy_ = 0;
         abort_count_ = 0;
         dbsize_ = dbsize;
 
-        /* TODO: Implement partitioning here. In our implementation, it is sufficient to
-         initiliaze partition_threads_ with <# processor> threads and store the database size or partition section size (database size / <# processor>). 
-         We will assume the database is partitioned into <# processor> contiguous blocks.  */
-
+        
         for (int i = 0; i < PARTITION_THREAD_COUNT; i++) 
-        {
-            StaticThreadPool next(1);
-            partition_threads_.PushValue(next);
+        {   
+            StaticThreadPool* tp = new StaticThreadPool(1);
+            partition_threads_.push_back(tp);
         }
-
     }
 
     // Create the storage
@@ -86,6 +83,13 @@ TxnProcessor::~TxnProcessor()
     pthread_join(scheduler_thread_, NULL);
 
     if (mode_ == LOCKING_EXCLUSIVE_ONLY || mode_ == LOCKING) delete lm_;
+
+    if (mode_ == H_STORE) {
+        for (StaticThreadPool* tp : partition_threads_)
+        {
+            delete tp;
+        }
+    }
 
     delete storage_;
 }
@@ -615,15 +619,26 @@ void TxnProcessor::RunMVCCScheduler()
     }
 }
 
-// This function shows how you can choose the correct partition to find a value given the key
-StaticThreadPool TxnProcessor::GetPartitionThreadPool(Key key) 
+// Return the partition thread that owns a given key
+StaticThreadPool* TxnProcessor::GetPartitionThreadPool(Key key) 
 {
     uint64 chunk_size = (uint64) (dbsize_ / PARTITION_THREAD_COUNT);
     uint64 index = key / chunk_size;
 
-    StaticThreadPool found = partition_threads_.Get(index);
+    return partition_threads_[index];
+}
 
-    return found;
+// Return the index of a given partition thread
+int TxnProcessor::GetPartitionIndex(StaticThreadPool* tp) 
+{
+    for (int i = 0; i < partition_threads_.size(); i++)
+    {
+        if (partition_threads_[i] == tp)
+        {
+            return i;
+        }
+    }
+    return -1;
 }
 
 void TxnProcessor::RunHStoreScheduler()
@@ -640,27 +655,113 @@ void TxnProcessor::RunHStoreScheduler()
     }
 }
 
-
-/* TODO: Implement Command Router / transaction coordinator.
-   Coordinator spawns worker thread by calling HStoreExecuteTxn */
 void TxnProcessor::HStoreExecuteTxn(Txn* txn)
 {
+    // Initialize txn->occ_start_idx_ and txn->h_store_timestamp_
+    txn->occ_start_idx_ = committed_txns_.Size();
+    txn->hstore_start_time_ = time(NULL);
 
-/* 
-For one-shot/single-site/sterile transactions, the worker thread sends the txn to the appropriate partition thread.
-    <ThreadPoolFromArray>.AddTask([this, txn]() { this->HStorePartitionThreadExecuteTxn(txn); });
-    Check the finished queue for results. When results arrive, worker thread will add results to the committed txn list
-For multi-partition transactions, determine which threads own the requested data. 
-    Decompose the transaction into subplans. Send each txn to the thread
-        When creating subplans, populate the hstore_start_time_, hstore_subplan_mutex_, and h_store_subplan_cond_ fields
-        To send next subplan and guarantee its run next, add a new method to StaticThreadPool that pushes "priority task" to front of queue
-    Command Router receives commits/aborts from threads. It sends the final decision to each thread to formally commit or abort the transaction.
-    Track rate of aborts via counter. If the number of aborts exceeds some threshold: then switch to the intermediate strategy via this::strategy_
-        We will set an epoch ourselves.
-    If aborts continue - then switch to advanced this::strategy_
-    If all commit, check the finished queue for results. When results arrive, worker thread will add joined results to the committed txn list
-*/
+    // Initialize mutex and cond for inter-thread communication
+    txn->h_store_subplan_cond_ = PTHREAD_COND_INITIALIZER;
+    txn->hstore_subplan_mutex_ = PTHREAD_MUTEX_INITIALIZER;
 
+    txn->hstore_is_aborted_ = false;
+
+    pthread_mutex_lock(&txn->hstore_subplan_mutex_);
+    // Find all necessary partition threads via GetPartitionThreadPool
+    for (set<Key>::iterator it = txn->readset_.begin(); it != txn->readset_.end(); ++it)
+    {
+        txn->hstore_pending_partition_threads_.push_back(GetPartitionThreadPool(*it));
+    }
+    for (set<Key>::iterator it = txn->writeset_.begin(); it != txn->writeset_.end(); ++it)
+    {
+        txn->hstore_pending_partition_threads_.push_back(GetPartitionThreadPool(*it));
+    }
+
+    // TODO: Add separate branch for multi-partition transactions
+    /* 
+     // Set up Phase One for RMW
+        set<Key> phase_one_reads;
+        merge(readset_.begin(), readset_.end(), writeset_.begin(), writeset_.end(), phase_one_reads.begin());
+
+        Txn phase_one = Expect(phase_one_reads);
+
+        phase_one.occ_start_idx_ = occ_start_idx_;
+        phase_one.hstore_start_time_ = hstore_start_time_;
+        phase_one.h_store_subplan_cond_ = h_store_subplan_cond_;
+        phase_one.hstore_subplan_mutex_ = hstore_subplan_mutex_;
+        phase_one.txn_processor_ = txn_processor_;
+        phase_one.hstore_is_aborted_ = false;
+
+        for (StaticThreadPool tp : hstore_pending_partition_threads_)
+        {
+           tp.AddTask({((TxnProcessor*)this->txn_processor_)->HStorePartitionThreadExecuteTxn(this, ((TxnProcessor*)this->txn_processor_)->GetPartitionIndex(tp)); });
+        }
+
+        // Wait for responses from all partition threads
+        pthread_mutex_lock(&hstore_subplan_mutex_);
+        while (hstore_pending_partition_threads_.size() != 0)
+        {
+            pthread_cond_wait(&h_store_subplan_cond_, &hstore_subplan_mutex_);
+        }
+        pthread_mutex_unlock(&hstore_subplan_mutex_);
+
+        if (phase_one.hstore_is_aborted_)
+        {
+            // increase abort_count
+            // ask all threads to abort the transaction.
+            // if increase exceeds threshold, change strategy 
+        }
+        else 
+        {
+            // Send Put of the writeset to all necessary threads
+            // push task on priority to queue
+            // notify all partition threads that next subplan is issued
+                // wait for all values to finish
+                    // if all commit, then add to finished queue and commited txn list
+        }
+    */
+
+    // Coordinate transactions with partition threads
+    for (StaticThreadPool* tp : txn->hstore_pending_partition_threads_)
+    {
+        tp->AddTask([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, this->GetPartitionIndex(tp)); });
+    }
+    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+
+    // Wait for responses from all partition threads
+    pthread_mutex_lock(&txn->hstore_subplan_mutex_);
+    while (txn->hstore_pending_partition_threads_.size() > 0)
+    {
+        pthread_cond_wait(&txn->h_store_subplan_cond_, &txn->hstore_subplan_mutex_);
+    }
+    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+
+    txn->status_ = COMMITTED;
+
+    if (txn->status_ == COMMITTED) 
+    {
+        mutex_.Lock();
+        committed_txns_.Push(txn);
+
+        // Update relevant data structure
+        txn_results_.Push(txn);
+        mutex_.Unlock();
+    }
+    else 
+    {
+        // Cleanup txn
+        txn->reads_.clear();
+        txn->writes_.clear();
+        txn->status_ = INCOMPLETE;
+
+        // Completely restart the transaction.
+        mutex_.Lock();
+        txn->unique_id_ = next_unique_id_;
+        next_unique_id_++;
+        txn_requests_.Push(txn);
+        mutex_.Unlock();
+    }
 }
 
 /* TODO: Implement logic that each partition thread performs. Assume each partition
@@ -670,6 +771,14 @@ For multi-partition transactions, determine which threads own the requested data
    i.e. if partition = 1, then only read and write values from [ (db_size/ partition_count)*partition, (db_size/ partition_count)*(partition+1) )  */
 void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, int partition)
 {
+    // Wait for responses from all partition threads
+    pthread_mutex_lock(&txn->hstore_subplan_mutex_);
+    
+    // Remove a partition thread from the deque
+    // This can be any arbitrary thread
+    txn->hstore_pending_partition_threads_.pop_back();
+    pthread_cond_signal(&txn->h_store_subplan_cond_);
+    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 /*
 If strategy_ = 0: Implement basic H-Store concurrency control
     For Put() and Expect():

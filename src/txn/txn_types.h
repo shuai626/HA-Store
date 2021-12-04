@@ -139,6 +139,115 @@ class RMW : public Txn
         }
     }
 
+    // Creates a RMW across k partitions. readsetsize + writesetsize must be >= k. 
+    RMW(int dbsize, int readsetsize, int writesetsize, int k, int thread_count,  double time = 0) : time_(time)
+    {
+        /*
+            if k == 1 then
+                single site
+                if no readset then
+                    it is like put
+                else
+                    it is like expect
+            else
+                multi-partition transaction
+
+        */
+
+        // Make sure the max partitions requested is <= thread_count
+        if (k > thread_count) {
+            k = thread_count;
+        }
+
+        // Make sure we can find enough unique keys.
+        DCHECK(dbsize >= readsetsize + writesetsize);
+    
+        int chunk_size = dbsize / thread_count;
+        
+        // Create set with k different values. 
+        set<int> partitions;
+        vector<int> v;
+        int counter = 0;
+        while (counter < k) 
+        {
+            int key = rand() % dbsize;
+            int index = key / chunk_size;
+
+            if (partitions.find(index) == partitions.end()) 
+            {
+                v.push_back(index);
+                partitions.insert(index);
+                counter++;
+            }
+        }
+
+        // Used to make sure all partitions are used before inserting into random partition
+        int count_across = 0;
+
+        // Find writesetsize unique write keys.
+        for (int i = 0; i < writesetsize; i++)
+        {
+            Key key;
+
+            if (count_across < k)
+            {
+                // makes sure each partition gets at least one write
+                int index = v.at(i);
+                do 
+                {
+                    key = (rand() % chunk_size) + (index * chunk_size);
+                } while (readset_.count(key) || writeset_.count(key));
+                writeset_.insert(key);
+
+                count_across++;
+            } 
+            else 
+            {
+
+                // Chooses a random partition and adds a value in the partition chosen
+                int index = v.at(rand() % k);
+                do
+                {
+                    key = (rand() % chunk_size) + (index * chunk_size);
+                } while (readset_.count(key) || writeset_.count(key));
+                writeset_.insert(key);
+            }
+        }
+
+        // Find readsetsize unique read keys.
+        for (int i = 0; i < readsetsize; i++)
+        {
+            Key key;
+            if (count_across < k)
+            {
+                // makes sure each partition gets a read/write before randomizing inserts
+                int index = v.at(i);
+                do 
+                {
+                    key = (rand() % chunk_size) + (index * chunk_size);
+                } while (readset_.count(key) || writeset_.count(key));
+                readset_.insert(key);
+
+                count_across++;
+            } 
+            else 
+            {
+                // Chooses a random partition and adds a value in the partition chosen
+                int index = v.at(rand() % k);
+                do
+                {
+                    key = (rand() % chunk_size) + (index * chunk_size);
+                } while (readset_.count(key) || writeset_.count(key));
+
+                readset_.insert(key);
+            }
+            
+        }
+
+        v.clear();
+        partitions.clear();
+    }
+
     RMW* clone() const
     {  // Virtual constructor (copying)
         RMW* clone = new RMW(time_);

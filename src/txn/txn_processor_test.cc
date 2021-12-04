@@ -145,8 +145,221 @@ class RMWDynLoadGen2 : public LoadGen
 
 /* TODO: Create new subclass of LoadGen for that only perform Put/Expect transactions */
 
+/*
+    This test performs Single Site Read and Single Site Write transactions. Dynamic timing.
+*/
+class SingleSiteLoadGen : public LoadGen
+{
+   public:
+    
+    SingleSiteLoadGen(int dbsize, int setsize, double wait_time, int read_only_pct, int write_only_pct, 
+        int thread_count)
+        : dbsize_(dbsize), setsize_(setsize), ss_read_only_ratio_(read_only_pct), ss_write_only_ratio_(write_only_pct)
+    {
+        wait_time_ = wait_time;
+    }
+
+    virtual Txn* NewTxn()
+    {
+        //used to determine read_only, write_only, or multipartition
+        int nxt = rand() % 100;
+        int txn_readset_size = setsize_;
+        int txn_writeset_size = setsize_;
+
+        if (nxt < ss_read_only_ratio_) 
+        {
+            txn_writeset_size = 0;
+        } 
+        else
+        {
+            txn_readset_size = 0;
+        } 
+
+        return new RMW(dbsize_, txn_readset_size, txn_writeset_size, 1, thread_count_, wait_time_);
+    }
+
+   private:
+    int dbsize_;
+    int setsize_;
+    int ss_read_only_ratio_;
+    int ss_write_only_ratio_;
+    int thread_count_;
+    double wait_time_;
+};
+
+class SingleSiteDynLoadGen : public LoadGen
+{
+   public:
+    
+    SingleSiteDynLoadGen(int dbsize, int setsize, vector<double> wait_times, int read_only_pct, int write_only_pct, 
+        int thread_count)
+        : dbsize_(dbsize), setsize_(setsize), ss_read_only_ratio_(read_only_pct), ss_write_only_ratio_(write_only_pct)
+    {
+        wait_times_ = wait_times;
+    }
+
+    virtual Txn* NewTxn()
+    {
+        //used to determine read_only, write_only, or multipartition
+        int nxt = rand() % 100;
+        int txn_readset_size = setsize_;
+        int txn_writeset_size = setsize_;
+
+        if (nxt < ss_read_only_ratio_) 
+        {
+            txn_writeset_size = 0;
+        } 
+        else
+        {
+            txn_readset_size = 0;
+        } 
+
+        if (rand() % 100 < 30)
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size, 1, thread_count_, wait_times_[0]);
+        else if (rand() % 100 < 60)
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size,  1, thread_count_, wait_times_[1]);
+        else
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size,  1, thread_count_, wait_times_[2]);
+
+    }
+
+   private:
+    int dbsize_;
+    int setsize_;
+    int ss_read_only_ratio_;
+    int ss_write_only_ratio_;
+    int thread_count_;
+    vector<double> wait_times_;
+};
+
+
+
 /* TODO: Create new subclass of LoadGen for that perform Put/Expect/RMW transactions. Ideally,
    include a parameter that can adjust the ratio of Put/Expect v RMW transactions  */
+
+/*
+    Performs SingleSiteReadOnly/SingleSiteWriteOnly/Multipartition transactions with Dynamic timing. 
+
+    read_only_pct: percent of single site read only transactions
+    write_only_pct: percent of single site write only transactions
+    multipartition: percent of multipartition transacations
+    max_partitions: the number of partitions for each multipartition transaction
+*/
+class MultipartitionAndSingleSiteLoadGen : public LoadGen
+{
+   public:
+    
+    MultipartitionAndSingleSiteLoadGen(int dbsize, int rsetsize, int wsetsize, double wait_time, int read_only_pct, int write_only_pct, 
+        int multipartition_pct, int max_partitions, int thread_count)
+        : dbsize_(dbsize), rsetsize_(rsetsize), wsetsize_(wsetsize), ss_read_only_ratio_(read_only_pct), ss_write_only_ratio_(write_only_pct), 
+        multipartition_ratio_(multipartition_pct)
+    {
+        wait_time_ = wait_time;
+    }
+
+    virtual Txn* NewTxn()
+    {
+        //used to determine read_only, write_only, or multipartition
+        int nxt = rand() % 100;
+        int txn_readset_size = rsetsize_;
+        int txn_writeset_size = wsetsize_;
+        int txn_k = max_partitions_;
+
+        if (nxt < ss_read_only_ratio_) 
+        {
+            txn_k = 1;
+            txn_writeset_size = 0;
+            // makes sure all three txn's are the same size
+            txn_readset_size += wsetsize_;
+        } 
+        else if (nxt < (ss_read_only_ratio_ + ss_write_only_ratio_))
+        {
+            txn_k = 1;
+            txn_readset_size = 0;
+            // makes sure all three txn's are the same size
+            txn_writeset_size += rsetsize_;
+        } 
+
+        return new RMW(dbsize_, txn_readset_size, txn_writeset_size, txn_k, thread_count_, wait_time_);
+    }
+
+   private:
+    int dbsize_;
+    int rsetsize_;
+    int wsetsize_;
+    int ss_read_only_ratio_;
+    int ss_write_only_ratio_;
+    int multipartition_ratio_;
+    int max_partitions_;
+    int thread_count_;
+    double wait_time_;
+};
+
+/*
+    Performs SingleSiteReadOnly/SingleSiteWriteOnly/Multipartition transactions with Dynamic timing. 
+    
+    read_only_pct: percent of single site read only transactions
+    write_only_pct: percent of single site write only transactions
+    multipartition: percent of multipartition transacations
+    max_partitions: the number of partitions for each multipartition transaction
+*/
+class MultipartitionAndSingleSiteDynLoadGen : public LoadGen
+{
+   public:
+    
+    MultipartitionAndSingleSiteDynLoadGen(int dbsize, int rsetsize, int wsetsize, vector<double> wait_times, int read_only_pct, int write_only_pct, 
+        int multipartition_pct, int max_partitions, int thread_count)
+        : dbsize_(dbsize), rsetsize_(rsetsize), wsetsize_(wsetsize), ss_read_only_ratio_(read_only_pct), ss_write_only_ratio_(write_only_pct), 
+        multipartition_ratio_(multipartition_pct)
+    {
+        wait_times_ = wait_times;
+    }
+
+    virtual Txn* NewTxn()
+    {
+        //used to determine read_only, write_only, or multipartition
+        int nxt = rand() % 100;
+        int txn_readset_size = rsetsize_;
+        int txn_writeset_size = wsetsize_;
+        int txn_k = max_partitions_;
+
+        if (nxt < ss_read_only_ratio_) 
+        {
+            txn_k = 1;
+            txn_writeset_size = 0;
+            // makes sure all three txn's are the same size
+            txn_readset_size += wsetsize_;
+        } 
+        else if (nxt < (ss_read_only_ratio_ + ss_write_only_ratio_))
+        {
+            txn_k = 1;
+            txn_readset_size = 0;
+            // makes sure all three txn's are the same size
+            txn_writeset_size += rsetsize_;
+        } 
+
+        //RMW(int dbsize, int readsetsize, int writesetsize, int k, int thread_count,  double time = 0)
+        // Mix transactions with different time durations (wait_times_) 
+        if (rand() % 100 < 30)
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size, txn_k, thread_count_, wait_times_[0]);
+        else if (rand() % 100 < 60)
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size,  txn_k, thread_count_, wait_times_[1]);
+        else
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size,  txn_k, thread_count_, wait_times_[2]);
+    }
+
+   private:
+    int dbsize_;
+    int rsetsize_;
+    int wsetsize_;
+    int ss_read_only_ratio_;
+    int ss_write_only_ratio_;
+    int multipartition_ratio_;
+    int max_partitions_;
+    int thread_count_;
+    vector<double> wait_times_;
+};
+
 
 //Generates benchmark with a given database size
 void Benchmark(const vector<LoadGen*>& lg, int dbsize)

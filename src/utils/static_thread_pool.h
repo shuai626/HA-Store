@@ -5,6 +5,9 @@
 #include <string>
 #include <utility>
 #include <vector>
+#include <unistd.h>
+#include <stdio.h>
+#include <iostream>
 #include "assert.h"
 #include "pthread.h"
 #include "stdlib.h"
@@ -48,9 +51,9 @@ class StaticThreadPool : public ThreadPool
 
     /* TODO: Add new public method that checks if the queue contains tasks 
        with timestamp earlier than currTxn. Use hstore_start_time_ as timestamp */
-    bool IsMostRecentTxn(Txn* currTxn) 
+    void GetMostRecentTxnTimestamp() 
     {
-        return false;
+        // No-OP
     }
 
    private:

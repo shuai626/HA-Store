@@ -103,7 +103,9 @@ class TxnProcessor
     void MVCCUnlockWriteKeys(Txn* txn);
 
     // The logic in this returns the threadpool (single thread) for the correct partition given a key
-    StaticThreadPool GetPartitionThreadPool(Key key);
+    StaticThreadPool* GetPartitionThreadPool(Key key);
+
+    int GetPartitionIndex(StaticThreadPool* tp);
 
     // The following functions are for H-Store
     void HStoreExecuteTxn(Txn* txn);
@@ -163,7 +165,7 @@ class TxnProcessor
 
     // Partition thread used for H_STORE concurrency implementation
     // Each partition thread is implemented as a static thread pool of size 1
-    AtomicVector<StaticThreadPool> partition_threads_;
+    deque<StaticThreadPool*> partition_threads_;
 
     // Strategy flag used for H_STORE concurrency implementation
     // 0 = Basic, 1 = Intermediate, 2 = Advanced
@@ -174,7 +176,6 @@ class TxnProcessor
 
     // Size of the database for the current test.
     int dbsize_;
-
 };
 
 #endif  // _TXN_PROCESSOR_H_

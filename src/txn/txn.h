@@ -4,12 +4,15 @@
 #include <map>
 #include <set>
 #include <vector>
+#include <deque>
 
+#include "utils/static_thread_pool.h"
 #include "utils/common.h"
 
 using std::map;
 using std::set;
 using std::vector;
+using std::deque;
 
 // Txns can have five distinct status values:
 enum TxnStatus
@@ -109,8 +112,14 @@ class Txn
     time_t hstore_start_time_;
 
     // Cond and wait structures (used for H-Store).
-    pthread_mutex_t *hstore_subplan_mutex_;
-    pthread_cond_t *h_store_subplan_cond_;
+    pthread_mutex_t hstore_subplan_mutex_;
+    pthread_cond_t h_store_subplan_cond_;
+
+    // H-Store partition threads that have yet to respond back to Command Router
+    deque<StaticThreadPool*> hstore_pending_partition_threads_;
+
+    // Flag that checks if any partition thread aborted a multipartition transaction
+    volatile bool hstore_is_aborted_;
 };
 
 #endif  // _TXN_H_

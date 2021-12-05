@@ -170,7 +170,7 @@ class TxnProcessor
     volatile int strategy_;
 
     // Abort count to determine strategy for H_STORE concurrency implementation
-    Atomic<int> abort_count_;
+    int abort_count_;
 
     // Size of the database for the current test.
     int dbsize_;

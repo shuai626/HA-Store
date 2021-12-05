@@ -10,6 +10,9 @@
 // Thread & queue counts for StaticThreadPool initialization.
 #define THREAD_COUNT 8
 
+#define INTERMEDIATE_PLAN_THRESHOLD 5
+#define ADVANCED_PLAN_THRESHOLD 10
+
 TxnProcessor::TxnProcessor(CCMode mode, int dbsize, int partition_thread_count) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
 {
     if (mode_ == LOCKING_EXCLUSIVE_ONLY)
@@ -661,82 +664,38 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
         txn->hstore_pending_partition_threads_.insert(GetPartitionThreadPool(*it));
     }
 
+    // Coordinate transactions with partition threads
+    for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+    {
+        StaticThreadPool* tp = *it;
+        tp->AddTask([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, tp->GetIndex()); });
+    }
+    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+
+    // Wait for responses from all partition threads
+    pthread_mutex_lock(&txn->hstore_subplan_mutex_);
+    while (txn->hstore_pending_partition_threads_.size() > 0)
+    {
+        pthread_cond_wait(&txn->h_store_subplan_cond_, &txn->hstore_subplan_mutex_);
+    }
+    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+
     if (txn->hstore_is_multipartition_transaction_)
     {
-        /* 
-     // Set up Phase One for RMW
-        set<Key> phase_one_reads;
-        merge(readset_.begin(), readset_.end(), writeset_.begin(), writeset_.end(), phase_one_reads.begin());
-
-        Txn phase_one = Expect(phase_one_reads);
-
-        phase_one.occ_start_idx_ = occ_start_idx_;
-        phase_one.hstore_start_time_ = hstore_start_time_;
-        phase_one.h_store_subplan_cond_ = h_store_subplan_cond_;
-        phase_one.hstore_subplan_mutex_ = hstore_subplan_mutex_;
-        phase_one.txn_processor_ = txn_processor_;
-        phase_one.hstore_is_aborted_ = false;
-
-        for (StaticThreadPool tp : hstore_pending_partition_threads_)
+        if (txn->hstore_is_aborted_)
         {
-           tp.AddTask({((TxnProcessor*)this->txn_processor_)->HStorePartitionThreadExecuteTxn(this, ((TxnProcessor*)this->txn_processor_)->GetPartitionIndex(tp)); });
-        }
+            // Increase abort count and change strategy, if needed
+            this->abort_count_++;
 
-        // Wait for responses from all partition threads
-        pthread_mutex_lock(&hstore_subplan_mutex_);
-        while (hstore_pending_partition_threads_.size() != 0)
-        {
-            pthread_cond_wait(&h_store_subplan_cond_, &hstore_subplan_mutex_);
-        }
-        pthread_mutex_unlock(&hstore_subplan_mutex_);
+            if (this->abort_count_ > ADVANCED_PLAN_THRESHOLD)
+            {
+                this->strategy_ = 2;
+            }
+            else if (this->abort_count_ > INTERMEDIATE_PLAN_THRESHOLD)
+            {
+                this->strategy_ = 1;
+            }
 
-        if (phase_one.hstore_is_aborted_)
-        {
-            // increase abort_count
-            // ask all threads to abort the transaction.
-            // if increase exceeds threshold, change strategy 
-        }
-        else 
-        {
-            // Send Put of the writeset to all necessary threads
-            // push task on priority to queue
-            // notify all partition threads that next subplan is issued
-                // wait for all values to finish
-                    // if all commit, then add to finished queue and commited txn list
-        }
-    */
-    }
-    else
-    {
-        // Coordinate transactions with partition threads
-        for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
-        {
-            StaticThreadPool* tp = *it;
-            tp->AddTask([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, tp->GetIndex()); });
-        }
-        pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
-
-        // Wait for responses from all partition threads
-        pthread_mutex_lock(&txn->hstore_subplan_mutex_);
-        while (txn->hstore_pending_partition_threads_.size() > 0)
-        {
-            pthread_cond_wait(&txn->h_store_subplan_cond_, &txn->hstore_subplan_mutex_);
-        }
-        pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
-
-        txn->status_ = COMMITTED;
-
-        if (txn->status_ == COMMITTED) 
-        {
-            mutex_.Lock();
-            committed_txns_.Push(txn);
-
-            // Update relevant data structure
-            txn_results_.Push(txn);
-            mutex_.Unlock();
-        }
-        else 
-        {
             // Cleanup txn
             txn->reads_.clear();
             txn->writes_.clear();
@@ -747,8 +706,71 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
             txn->unique_id_ = next_unique_id_;
             next_unique_id_++;
             txn_requests_.Push(txn);
-            mutex_.Unlock();
+            mutex_.Unlock();            
+
+            // TODO ask all threads to abort the transaction.
+            
         }
+        else 
+        {
+            pthread_mutex_lock(&txn->hstore_subplan_mutex_);
+
+            // Find all necessary partition threads via GetPartitionThreadPool
+            for (set<Key>::iterator it = txn->readset_.begin(); it != txn->readset_.end(); ++it)
+            {
+                txn->hstore_pending_partition_threads_.insert(GetPartitionThreadPool(*it));
+            }
+            for (set<Key>::iterator it = txn->writeset_.begin(); it != txn->writeset_.end(); ++it)
+            {
+                txn->hstore_pending_partition_threads_.insert(GetPartitionThreadPool(*it));
+            }
+
+            // Push task on priority to queue
+            for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+            {
+                StaticThreadPool* tp = *it;
+                tp->AddTaskToFront([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, tp->GetIndex()); });
+            }
+            pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+
+            
+            // TODO: notify all partition threads that next subplan is issued
+
+            // Wait for responses from all partition threads
+            pthread_mutex_lock(&txn->hstore_subplan_mutex_);
+            while (txn->hstore_pending_partition_threads_.size() > 0)
+            {
+                pthread_cond_wait(&txn->h_store_subplan_cond_, &txn->hstore_subplan_mutex_);
+            }
+            pthread_mutex_unlock(&txn->hstore_subplan_mutex_);                    
+        }
+    }
+
+    // Transaction commits, so add to finished queue and commited txn list
+    txn->status_ = COMMITTED;
+
+    if (txn->status_ == COMMITTED) 
+    {
+        mutex_.Lock();
+        committed_txns_.Push(txn);
+
+        // Update relevant data structure
+        txn_results_.Push(txn);
+        mutex_.Unlock();
+    }
+    else 
+    {
+        // Cleanup txn
+        txn->reads_.clear();
+        txn->writes_.clear();
+        txn->status_ = INCOMPLETE;
+
+        // Completely restart the transaction.
+        mutex_.Lock();
+        txn->unique_id_ = next_unique_id_;
+        next_unique_id_++;
+        txn_requests_.Push(txn);
+        mutex_.Unlock();
     }
 }
 
@@ -759,13 +781,12 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
    i.e. if partition = 1, then only read and write values from [ (db_size/ partition_count)*partition, (db_size/ partition_count)*(partition+1) )  */
 void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, int partition)
 {
-    // Wait for responses from all partition threads
     pthread_mutex_lock(&txn->hstore_subplan_mutex_);
     
     // Remove a partition thread from the deque
     // This can be any arbitrary thread
     txn->hstore_pending_partition_threads_.erase(txn->hstore_pending_partition_threads_.begin());
-    pthread_cond_signal(&txn->h_store_subplan_cond_);
+    pthread_cond_broadcast(&txn->h_store_subplan_cond_);
     pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 /*
 If strategy_ = 0: Implement basic H-Store concurrency control

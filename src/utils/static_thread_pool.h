@@ -48,13 +48,27 @@ class StaticThreadPool : public ThreadPool
         }
     }
 
+    virtual void AddTaskToFront(const Task& task)
+    {
+        assert(!stopped_);
+        while (!queues_[rand() % thread_count_].PushFrontNonBlocking(task))
+        {
+        }
+    }
+
     virtual int ThreadCount() { return thread_count_; }
 
     /* TODO: Add new public method that checks if the queue contains tasks 
        with timestamp earlier than currTxn. Use hstore_start_time_ as timestamp */
-    void GetMostRecentTxnTimestamp() 
+    bool GetMostRecentTxnTimestamp(time_t time) 
     {
         // No-OP
+
+        // true if you can commit
+
+        // false if you can't
+
+        return false;
     }
 
     int GetIndex() { return hstore_index_; }

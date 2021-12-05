@@ -5,6 +5,8 @@
 #include "txn/txn_types.h"
 #include "utils/testing.h"
 
+#define PARTITION_THREAD_COUNT 8
+
 // Returns a human-readable string naming of the providing mode.
 string ModeToString(CCMode mode)
 {
@@ -145,8 +147,221 @@ class RMWDynLoadGen2 : public LoadGen
 
 /* TODO: Create new subclass of LoadGen for that only perform Put/Expect transactions */
 
+/*
+    This test performs Single Site Read and Single Site Write transactions. Dynamic timing.
+*/
+class SingleSiteLoadGen : public LoadGen
+{
+   public:
+    
+    SingleSiteLoadGen(int dbsize, int setsize, double wait_time, int read_only_pct, int write_only_pct, 
+        int thread_count)
+        : dbsize_(dbsize), setsize_(setsize), ss_read_only_ratio_(read_only_pct), ss_write_only_ratio_(write_only_pct), thread_count_(thread_count)
+    {
+        wait_time_ = wait_time;
+    }
+
+    virtual Txn* NewTxn()
+    {
+        //used to determine read_only, write_only, or multipartition
+        int nxt = rand() % 100;
+        int txn_readset_size = setsize_;
+        int txn_writeset_size = setsize_;
+
+        if (nxt < ss_read_only_ratio_) 
+        {
+            txn_writeset_size = 0;
+        } 
+        else
+        {
+            txn_readset_size = 0;
+        } 
+
+        return new RMW(dbsize_, txn_readset_size, txn_writeset_size, 1, thread_count_, wait_time_);
+    }
+
+   private:
+    int dbsize_;
+    int setsize_;
+    int ss_read_only_ratio_;
+    int ss_write_only_ratio_;
+    int thread_count_;
+    double wait_time_;
+};
+
+class SingleSiteDynLoadGen : public LoadGen
+{
+   public:
+    
+    SingleSiteDynLoadGen(int dbsize, int setsize, vector<double> wait_times, int read_only_pct, int write_only_pct, 
+        int thread_count)
+        : dbsize_(dbsize), setsize_(setsize), ss_read_only_ratio_(read_only_pct), ss_write_only_ratio_(write_only_pct), thread_count_(thread_count)
+    {
+        wait_times_ = wait_times;
+    }
+
+    virtual Txn* NewTxn()
+    {
+        //used to determine read_only, write_only, or multipartition
+        int nxt = rand() % 100;
+        int txn_readset_size = setsize_;
+        int txn_writeset_size = setsize_;
+
+        if (nxt < ss_read_only_ratio_) 
+        {
+            txn_writeset_size = 0;
+        } 
+        else
+        {
+            txn_readset_size = 0;
+        } 
+
+        if (rand() % 100 < 30)
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size, 1, thread_count_, wait_times_[0]);
+        else if (rand() % 100 < 60)
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size,  1, thread_count_, wait_times_[1]);
+        else
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size,  1, thread_count_, wait_times_[2]);
+
+    }
+
+   private:
+    int dbsize_;
+    int setsize_;
+    int ss_read_only_ratio_;
+    int ss_write_only_ratio_;
+    int thread_count_;
+    vector<double> wait_times_;
+};
+
+
+
 /* TODO: Create new subclass of LoadGen for that perform Put/Expect/RMW transactions. Ideally,
    include a parameter that can adjust the ratio of Put/Expect v RMW transactions  */
+
+/*
+    Performs SingleSiteReadOnly/SingleSiteWriteOnly/Multipartition transactions with Dynamic timing. 
+
+    read_only_pct: percent of single site read only transactions
+    write_only_pct: percent of single site write only transactions
+    multipartition: percent of multipartition transacations
+    max_partitions: the number of partitions for each multipartition transaction
+*/
+class MultipartitionAndSingleSiteLoadGen : public LoadGen
+{
+   public:
+    
+    MultipartitionAndSingleSiteLoadGen(int dbsize, int rsetsize, int wsetsize, double wait_time, int read_only_pct, int write_only_pct, 
+        int multipartition_pct, int max_partitions, int thread_count)
+        : dbsize_(dbsize), rsetsize_(rsetsize), wsetsize_(wsetsize), ss_read_only_ratio_(read_only_pct), ss_write_only_ratio_(write_only_pct), 
+        multipartition_ratio_(multipartition_pct), max_partitions_(max_partitions), thread_count_(thread_count)
+    {
+        wait_time_ = wait_time;
+    }
+
+    virtual Txn* NewTxn()
+    {
+        //used to determine read_only, write_only, or multipartition
+        int nxt = rand() % 100;
+        int txn_readset_size = rsetsize_;
+        int txn_writeset_size = wsetsize_;
+        int txn_k = max_partitions_;
+
+        if (nxt < ss_read_only_ratio_) 
+        {
+            txn_k = 1;
+            txn_writeset_size = 0;
+            // makes sure all three txn's are the same size
+            txn_readset_size += wsetsize_;
+        } 
+        else if (nxt < (ss_read_only_ratio_ + ss_write_only_ratio_))
+        {
+            txn_k = 1;
+            txn_readset_size = 0;
+            // makes sure all three txn's are the same size
+            txn_writeset_size += rsetsize_;
+        } 
+
+        return new RMW(dbsize_, txn_readset_size, txn_writeset_size, txn_k, thread_count_, wait_time_);
+    }
+
+   private:
+    int dbsize_;
+    int rsetsize_;
+    int wsetsize_;
+    int ss_read_only_ratio_;
+    int ss_write_only_ratio_;
+    int multipartition_ratio_;
+    int max_partitions_;
+    int thread_count_;
+    double wait_time_;
+};
+
+/*
+    Performs SingleSiteReadOnly/SingleSiteWriteOnly/Multipartition transactions with Dynamic timing. 
+    
+    read_only_pct: percent of single site read only transactions
+    write_only_pct: percent of single site write only transactions
+    multipartition: percent of multipartition transacations
+    max_partitions: the number of partitions for each multipartition transaction
+*/
+class MultipartitionAndSingleSiteDynLoadGen : public LoadGen
+{
+   public:
+    
+    MultipartitionAndSingleSiteDynLoadGen(int dbsize, int rsetsize, int wsetsize, vector<double> wait_times, int read_only_pct, int write_only_pct, 
+        int multipartition_pct, int max_partitions, int thread_count)
+        : dbsize_(dbsize), rsetsize_(rsetsize), wsetsize_(wsetsize), ss_read_only_ratio_(read_only_pct), ss_write_only_ratio_(write_only_pct), 
+        multipartition_ratio_(multipartition_pct), max_partitions_(max_partitions), thread_count_(thread_count)
+    {
+        wait_times_ = wait_times;
+    }
+
+    virtual Txn* NewTxn()
+    {
+        //used to determine read_only, write_only, or multipartition
+        int nxt = rand() % 100;
+        int txn_readset_size = rsetsize_;
+        int txn_writeset_size = wsetsize_;
+        int txn_k = max_partitions_;
+
+        if (nxt < ss_read_only_ratio_) 
+        {
+            txn_k = 1;
+            txn_writeset_size = 0;
+            // makes sure all three txn's are the same size
+            txn_readset_size += wsetsize_;
+        } 
+        else if (nxt < (ss_read_only_ratio_ + ss_write_only_ratio_))
+        {
+            txn_k = 1;
+            txn_readset_size = 0;
+            // makes sure all three txn's are the same size
+            txn_writeset_size += rsetsize_;
+        } 
+
+        //RMW(int dbsize, int readsetsize, int writesetsize, int k, int thread_count,  double time = 0)
+        // Mix transactions with different time durations (wait_times_) 
+        if (rand() % 100 < 30)
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size, txn_k, thread_count_, wait_times_[0]);
+        else if (rand() % 100 < 60)
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size,  txn_k, thread_count_, wait_times_[1]);
+        else
+            return new RMW(dbsize_, txn_readset_size, txn_writeset_size,  txn_k, thread_count_, wait_times_[2]);
+    }
+
+   private:
+    int dbsize_;
+    int rsetsize_;
+    int wsetsize_;
+    int ss_read_only_ratio_;
+    int ss_write_only_ratio_;
+    int multipartition_ratio_;
+    int max_partitions_;
+    int thread_count_;
+    vector<double> wait_times_;
+};
+
 
 //Generates benchmark with a given database size
 void Benchmark(const vector<LoadGen*>& lg, int dbsize)
@@ -170,7 +385,7 @@ void Benchmark(const vector<LoadGen*>& lg, int dbsize)
                 int txn_count = 0;
 
                 // Create TxnProcessor in next mode.
-                TxnProcessor* p = new TxnProcessor(mode, dbsize);
+                TxnProcessor* p = new TxnProcessor(mode, dbsize, PARTITION_THREAD_COUNT);
 
                 // Record start time.
                 double start = GetTime();
@@ -228,7 +443,107 @@ int main(int argc, char** argv)
     cout << "\t\t-------------------------------------------------------------------" << endl;
 
     vector<LoadGen*> lg;
+    
+    cout << "\t\t            Low contention SingleSite Read/Write (6 records)" << endl;
+    cout << "\t\t-------------------------------------------------------------------" << endl;
+    lg.push_back(new SingleSiteLoadGen(1000000, 5, 0.0001, 50, 50, PARTITION_THREAD_COUNT));
+    lg.push_back(new SingleSiteLoadGen(1000000, 5, 0.001, 50, 50, PARTITION_THREAD_COUNT));
+    lg.push_back(new SingleSiteLoadGen(1000000, 5, 0.01, 50, 50, PARTITION_THREAD_COUNT));
+    lg.push_back(new SingleSiteDynLoadGen(1000000, 5, {0.0001, 0.001, 0.01}, 50, 50, PARTITION_THREAD_COUNT));
+    
 
+    Benchmark(lg, 1000000);
+    cout << endl;
+
+    for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+        lg.clear();
+
+    cout << "\t\t            High contention SingleSite Read/Write (6 records)" << endl;
+    cout << "\t\t-------------------------------------------------------------------" << endl;
+    lg.push_back(new SingleSiteLoadGen(100, 6, 0.0001, 50, 50, PARTITION_THREAD_COUNT));
+    lg.push_back(new SingleSiteLoadGen(100, 6, 0.001, 50, 50, PARTITION_THREAD_COUNT));
+    lg.push_back(new SingleSiteLoadGen(100, 6, 0.01, 50, 50, PARTITION_THREAD_COUNT));
+    lg.push_back(new SingleSiteDynLoadGen(100, 6, {0.0001, 0.001, 0.01}, 50, 50, PARTITION_THREAD_COUNT));
+    
+    Benchmark(lg, 100);
+    cout << endl;
+    for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+    lg.clear();
+    
+    //Ratio 33/33/33 ss_read/ss_write/multipartition. 6 records so it's divided evenly betwwen read/write;
+    cout << "\t\t            Low contention SingleSite and Multipartition (6 records)" << endl;
+    cout << "\t\t-------------------------------------------------------------------" << endl;
+    int num_patitions_for_mp = 4;
+    
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.0001, 33, 33, 33, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.001, 33, 33, 33, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.01, 33, 33, 33, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteDynLoadGen(1000000, 3, 3, {0.0001, 0.001, 0.01}, 33, 33, 33, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+
+    Benchmark(lg, 1000000);
+    cout << endl;
+
+    for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+        lg.clear();
+
+    //Ratio 33/33/33 ss_read/ss_write/multipartition.
+    cout << "\t\t            High contention SingleSite and Multipartition (6 records)" << endl;
+    cout << "\t\t-------------------------------------------------------------------" << endl;
+
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(100, 3, 3, 0.0001, 33, 33, 33, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(100, 3, 3, 0.001, 33, 33, 33, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(100, 3, 3, 0.01, 33, 33, 33, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteDynLoadGen(100, 3, 3, {0.0001, 0.001, 0.01}, 33, 33, 33, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+
+    Benchmark(lg, 100);
+    cout << endl;
+
+    for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+        lg.clear();
+
+    cout << "\t\t            Low contention Multipartition only (6 records)" << endl;
+    cout << "\t\t-------------------------------------------------------------------" << endl;
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.0001, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.001, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.01, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteDynLoadGen(1000000, 3, 3, {0.0001, 0.001, 0.01}, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+
+    Benchmark(lg, 1000000);
+    cout << endl;
+
+    for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+        lg.clear();
+
+    //Ratio 50/50 read/write.
+    cout << "\t\t            High contention Multipartition Only (6 records)" << endl;
+    cout << "\t\t-------------------------------------------------------------------" << endl;
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(100, 3, 3, 0.0001, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(100, 3, 3, 0.001, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(100, 3, 3, 0.01, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteDynLoadGen(100, 3, 3, {0.0001, 0.001, 0.01}, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+
+    Benchmark(lg, 100);
+    cout << endl;
+
+    for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+        lg.clear();
+    
+    //Ratio 50/50 read/write.
+    cout << "\t\t            High contention Multipartition Only (12 records)" << endl;
+    cout << "\t\t-------------------------------------------------------------------" << endl;
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(100, 6, 6, 0.0001, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(100, 6, 6, 0.001, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteLoadGen(100, 6, 6, 0.01, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+    lg.push_back(new MultipartitionAndSingleSiteDynLoadGen(100, 6, 6, {0.0001, 0.001, 0.01}, 0, 0, 100, num_patitions_for_mp, PARTITION_THREAD_COUNT));
+
+    Benchmark(lg, 100);
+    cout << endl;
+
+    for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+        lg.clear();
+    
+    
+    /*
     cout << "\t\t            Low contention Read only (5 records)" << endl;
     cout << "\t\t-------------------------------------------------------------------" << endl;
     lg.push_back(new RMWLoadGen(1000000, 5, 0, 0.0001));
@@ -348,4 +663,5 @@ int main(int argc, char** argv)
 
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
     lg.clear();
+    */
 }

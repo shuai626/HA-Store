@@ -10,11 +10,7 @@
 // Thread & queue counts for StaticThreadPool initialization.
 #define THREAD_COUNT 8
 
-/* TODO: Change PARTITION_THREAD_COUNT to <# processor> threads  */
-// Number of partitions when using H-STORE
-#define PARTITION_THREAD_COUNT 8
-
-TxnProcessor::TxnProcessor(CCMode mode, int dbsize) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
+TxnProcessor::TxnProcessor(CCMode mode, int dbsize, int partition_thread_count) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
 {
     if (mode_ == LOCKING_EXCLUSIVE_ONLY)
         lm_ = new LockManagerA(&ready_txns_);
@@ -27,9 +23,9 @@ TxnProcessor::TxnProcessor(CCMode mode, int dbsize) : mode_(mode), tp_(THREAD_CO
         strategy_ = 0;
         abort_count_ = 0;
         dbsize_ = dbsize;
+        partition_thread_count_ = partition_thread_count;
 
-        
-        for (int i = 0; i < PARTITION_THREAD_COUNT; i++) 
+        for (int i = 0; i < partition_thread_count; i++) 
         {   
             StaticThreadPool* tp = new StaticThreadPool(1);
             partition_threads_.push_back(tp);
@@ -622,7 +618,7 @@ void TxnProcessor::RunMVCCScheduler()
 // Return the partition thread that owns a given key
 StaticThreadPool* TxnProcessor::GetPartitionThreadPool(Key key) 
 {
-    uint64 chunk_size = (uint64) (dbsize_ / PARTITION_THREAD_COUNT);
+    uint64 chunk_size = (uint64) (dbsize_ / partition_thread_count_);
     uint64 index = key / chunk_size;
 
     return partition_threads_[index];

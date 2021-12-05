@@ -24,6 +24,7 @@ class StaticThreadPool : public ThreadPool
 {
    public:
     StaticThreadPool(int nthreads) : thread_count_(nthreads), stopped_(false) { Start(); }
+    StaticThreadPool(int nthreads, int index) : thread_count_(nthreads), stopped_(false), hstore_index_(index) { Start(); }
     ~StaticThreadPool()
     {
         stopped_ = true;
@@ -55,6 +56,8 @@ class StaticThreadPool : public ThreadPool
     {
         // No-OP
     }
+
+    int GetIndex() { return hstore_index_; }
 
    private:
     void Start()
@@ -128,6 +131,9 @@ class StaticThreadPool : public ThreadPool
     vector<AtomicQueue<Task>> queues_;
 
     bool stopped_;
+
+    int hstore_index_;
+    int hstore_timestamp_;
 };
 
 #endif  // _DB_UTILS_STATIC_THREAD_POOL_H_

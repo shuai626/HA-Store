@@ -151,6 +151,27 @@ class RMW : public Txn
             k = thread_count;
         }
 
+        // If Txn is single-site
+        if (k == 1)
+        {
+            this->hstore_is_multipartition_transaction_ = false;
+        }
+        // Otherwise Txn is multisite. Randomly divide these into one-shot and multi-partition
+        else
+        {
+            int key = rand() % 2;
+
+            // Divide into one-shot and multi-partition txn with 50/50 split
+            if (key  == 0)
+            {
+                this->hstore_is_multipartition_transaction_ = false;
+            }
+            else 
+            {
+                this->hstore_is_multipartition_transaction_ = true;
+            }
+        }
+
         // Make sure we can find enough unique keys.
         DCHECK(dbsize >= readsetsize + writesetsize);
     

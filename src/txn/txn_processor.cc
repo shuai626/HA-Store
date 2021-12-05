@@ -27,7 +27,7 @@ TxnProcessor::TxnProcessor(CCMode mode, int dbsize, int partition_thread_count) 
 
         for (int i = 0; i < partition_thread_count; i++) 
         {   
-            StaticThreadPool* tp = new StaticThreadPool(1);
+            StaticThreadPool* tp = new StaticThreadPool(1, i);
             partition_threads_.push_back(tp);
         }
     }
@@ -624,19 +624,6 @@ StaticThreadPool* TxnProcessor::GetPartitionThreadPool(Key key)
     return partition_threads_[index];
 }
 
-// Return the index of a given partition thread
-int TxnProcessor::GetPartitionIndex(StaticThreadPool* tp) 
-{
-    for (int i = 0; i < partition_threads_.size(); i++)
-    {
-        if (partition_threads_[i] == tp)
-        {
-            return i;
-        }
-    }
-    return -1;
-}
-
 void TxnProcessor::RunHStoreScheduler()
 {
     Txn* txn;
@@ -674,8 +661,9 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
         txn->hstore_pending_partition_threads_.insert(GetPartitionThreadPool(*it));
     }
 
-    // TODO: Add separate branch for multi-partition transactions
-    /* 
+    if (txn->hstore_is_multipartition_transaction_)
+    {
+        /* 
      // Set up Phase One for RMW
         set<Key> phase_one_reads;
         merge(readset_.begin(), readset_.end(), writeset_.begin(), writeset_.end(), phase_one_reads.begin());
@@ -717,47 +705,50 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
                     // if all commit, then add to finished queue and commited txn list
         }
     */
-
-    // Coordinate transactions with partition threads
-    for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
-    {
-        StaticThreadPool* tp = *it;
-        tp->AddTask([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, this->GetPartitionIndex(tp)); });
     }
-    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
-
-    // Wait for responses from all partition threads
-    pthread_mutex_lock(&txn->hstore_subplan_mutex_);
-    while (txn->hstore_pending_partition_threads_.size() > 0)
+    else
     {
-        pthread_cond_wait(&txn->h_store_subplan_cond_, &txn->hstore_subplan_mutex_);
-    }
-    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+        // Coordinate transactions with partition threads
+        for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+        {
+            StaticThreadPool* tp = *it;
+            tp->AddTask([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, tp->GetIndex()); });
+        }
+        pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 
-    txn->status_ = COMMITTED;
+        // Wait for responses from all partition threads
+        pthread_mutex_lock(&txn->hstore_subplan_mutex_);
+        while (txn->hstore_pending_partition_threads_.size() > 0)
+        {
+            pthread_cond_wait(&txn->h_store_subplan_cond_, &txn->hstore_subplan_mutex_);
+        }
+        pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 
-    if (txn->status_ == COMMITTED) 
-    {
-        mutex_.Lock();
-        committed_txns_.Push(txn);
+        txn->status_ = COMMITTED;
 
-        // Update relevant data structure
-        txn_results_.Push(txn);
-        mutex_.Unlock();
-    }
-    else 
-    {
-        // Cleanup txn
-        txn->reads_.clear();
-        txn->writes_.clear();
-        txn->status_ = INCOMPLETE;
+        if (txn->status_ == COMMITTED) 
+        {
+            mutex_.Lock();
+            committed_txns_.Push(txn);
 
-        // Completely restart the transaction.
-        mutex_.Lock();
-        txn->unique_id_ = next_unique_id_;
-        next_unique_id_++;
-        txn_requests_.Push(txn);
-        mutex_.Unlock();
+            // Update relevant data structure
+            txn_results_.Push(txn);
+            mutex_.Unlock();
+        }
+        else 
+        {
+            // Cleanup txn
+            txn->reads_.clear();
+            txn->writes_.clear();
+            txn->status_ = INCOMPLETE;
+
+            // Completely restart the transaction.
+            mutex_.Lock();
+            txn->unique_id_ = next_unique_id_;
+            next_unique_id_++;
+            txn_requests_.Push(txn);
+            mutex_.Unlock();
+        }
     }
 }
 

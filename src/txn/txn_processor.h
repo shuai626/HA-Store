@@ -105,8 +105,6 @@ class TxnProcessor
     // The logic in this returns the threadpool (single thread) for the correct partition given a key
     StaticThreadPool* GetPartitionThreadPool(Key key);
 
-    int GetPartitionIndex(StaticThreadPool* tp);
-
     // The following functions are for H-Store
     void HStoreExecuteTxn(Txn* txn);
 

@@ -118,6 +118,9 @@ class Txn
     // H-Store partition threads that have yet to respond back to Command Router
     set<StaticThreadPool*> hstore_pending_partition_threads_;
 
+    // Flag for txn class type: false = single-site/one-shot/sterile, true = multipartition
+    bool hstore_is_multipartition_transaction_;
+
     // Flag that checks if any partition thread aborted a multipartition transaction
     volatile bool hstore_is_aborted_;
 };

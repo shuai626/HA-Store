@@ -664,6 +664,10 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     txn->h_store_subplan_cond_ = PTHREAD_COND_INITIALIZER;
     txn->hstore_subplan_mutex_ = PTHREAD_MUTEX_INITIALIZER;
 
+    txn->hstore_commit_abort_cond_ = PTHREAD_COND_INITIALIZER;
+    txn->hstore_commit_abort_mutex_ = PTHREAD_MUTEX_INITIALIZER;
+
+
     txn->hstore_is_aborted_ = false;
 
     pthread_mutex_lock(&txn->hstore_subplan_mutex_);

@@ -40,7 +40,7 @@ class TxnProcessor
    public:
     // The TxnProcessor's constructor starts the TxnProcessor running in the
     // background.
-    explicit TxnProcessor(CCMode mode, int dbsize);
+    explicit TxnProcessor(CCMode mode, int dbsize, int partition_thread_count);
 
     // The TxnProcessor's destructor stops all background threads and deallocates
     // all objects currently owned by the TxnProcessor, except for Txn objects.
@@ -176,6 +176,9 @@ class TxnProcessor
 
     // Size of the database for the current test.
     int dbsize_;
+
+    // Number of partition threads
+    int partition_thread_count_;
 };
 
 #endif  // _TXN_PROCESSOR_H_

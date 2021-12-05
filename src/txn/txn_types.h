@@ -38,7 +38,7 @@ class Expect : public Txn
     Expect(const set<Key> s)
     {
         std::map<Key,Value> m;
-        std::transform(s.cbegin(), s.cend(), std::inserter(m, begin(m)), [] (const Key &arg) { return std::make_pair(arg, 1);});
+       // std::transform(s.cbegin(), s.cend(), std::inserter(m, begin(m)), [] (const Key &arg) { return std::make_pair(arg, 1);});
         m_ = m;
         for (set<Key>::iterator it = s.begin(); it != s.end(); ++it) readset_.insert(*it);
     }
@@ -153,7 +153,6 @@ class RMW : public Txn
                 multi-partition transaction
 
         */
-
         // Make sure the max partitions requested is <= thread_count
         if (k > thread_count) {
             k = thread_count;
@@ -163,7 +162,6 @@ class RMW : public Txn
         DCHECK(dbsize >= readsetsize + writesetsize);
     
         int chunk_size = dbsize / thread_count;
-        
         // Create set with k different values. 
         set<int> partitions;
         vector<int> v;
@@ -192,7 +190,7 @@ class RMW : public Txn
             if (count_across < k)
             {
                 // makes sure each partition gets at least one write
-                int index = v.at(i);
+                int index = v.at(count_across);
                 do 
                 {
                     key = (rand() % chunk_size) + (index * chunk_size);
@@ -221,7 +219,7 @@ class RMW : public Txn
             if (count_across < k)
             {
                 // makes sure each partition gets a read/write before randomizing inserts
-                int index = v.at(i);
+                int index = v.at(count_across);
                 do 
                 {
                     key = (rand() % chunk_size) + (index * chunk_size);

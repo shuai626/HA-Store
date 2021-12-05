@@ -10,6 +10,9 @@
 // Thread & queue counts for StaticThreadPool initialization.
 #define THREAD_COUNT 8
 
+#define BASIC_WAIT_TIME       100
+#define ITERMEDIATE_WAIT_TIME 200
+
 TxnProcessor::TxnProcessor(CCMode mode, int dbsize, int partition_thread_count) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
 {
     if (mode_ == LOCKING_EXCLUSIVE_ONLY)
@@ -775,6 +778,18 @@ void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, int partition)
     txn->hstore_pending_partition_threads_.pop_back();
     pthread_cond_signal(&txn->h_store_subplan_cond_);
     pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+
+    //basic strategy
+    if(strategy_ == 0) {
+
+
+    //intermediate strategy
+    }else if (strategy_ == 1) {
+
+    //advanced strategy
+    }else if (strategy_ == 2) { 
+
+    }
 /*
 If strategy_ = 0: Implement basic H-Store concurrency control
     For Put() and Expect():
@@ -799,3 +814,4 @@ If strategy = 2: Implement advanced H-store concurrency control
     If commit, then place results inside a finished queue
 */
 }
+

@@ -667,11 +667,11 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     // Find all necessary partition threads via GetPartitionThreadPool
     for (set<Key>::iterator it = txn->readset_.begin(); it != txn->readset_.end(); ++it)
     {
-        txn->hstore_pending_partition_threads_.push_back(GetPartitionThreadPool(*it));
+        txn->hstore_pending_partition_threads_.insert(GetPartitionThreadPool(*it));
     }
     for (set<Key>::iterator it = txn->writeset_.begin(); it != txn->writeset_.end(); ++it)
     {
-        txn->hstore_pending_partition_threads_.push_back(GetPartitionThreadPool(*it));
+        txn->hstore_pending_partition_threads_.insert(GetPartitionThreadPool(*it));
     }
 
     // TODO: Add separate branch for multi-partition transactions
@@ -719,8 +719,9 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     */
 
     // Coordinate transactions with partition threads
-    for (StaticThreadPool* tp : txn->hstore_pending_partition_threads_)
+    for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
     {
+        StaticThreadPool* tp = *it;
         tp->AddTask([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, this->GetPartitionIndex(tp)); });
     }
     pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
@@ -772,7 +773,7 @@ void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, int partition)
     
     // Remove a partition thread from the deque
     // This can be any arbitrary thread
-    txn->hstore_pending_partition_threads_.pop_back();
+    txn->hstore_pending_partition_threads_.erase(txn->hstore_pending_partition_threads_.begin());
     pthread_cond_signal(&txn->h_store_subplan_cond_);
     pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 /*

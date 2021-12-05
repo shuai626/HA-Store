@@ -24,9 +24,6 @@ class Noop : public Txn
 // Reads all keys in the map 'm', if all results correspond to the values in
 // the provided map, commits, else aborts.
 
-/* TODO: Modify Expect to take in a second parameter k, where 0 ≤ k < n. Expect
-   will always acreate a read_set that contains keys across k partitions.       */
-
 class Expect : public Txn
 {
    public:
@@ -57,7 +54,6 @@ class Expect : public Txn
         {
             if (!Read(it->first, &result) || result != it->second)
             {
-                // TODO: Remove abort
                 ABORT;
             }
         }
@@ -95,9 +91,6 @@ class Put : public Txn
 };
 
 // Read-modify-write transaction.
-
-/* TODO: Modify RMW to take in a new parameter k, where 0 ≤ k < n. Expect
-   will always acreate a read_set that contains keys across k partitions        */
 
 class RMW : public Txn
 {

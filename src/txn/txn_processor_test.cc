@@ -38,9 +38,6 @@ class LoadGen
     virtual Txn* NewTxn() = 0;
 };
 
-/* TODO: Refactor RMWLoadGen, RMWLoadGen2, RMWDynLoadGen, and RMWDynLoadGen2
-   to work with our modified implementation of RMW (see txn_types.h)         */
-
 class RMWLoadGen : public LoadGen
 {
    public:
@@ -145,8 +142,6 @@ class RMWDynLoadGen2 : public LoadGen
     vector<double> wait_times_;
 };
 
-/* TODO: Create new subclass of LoadGen for that only perform Put/Expect transactions */
-
 /*
     This test performs Single Site Read and Single Site Write transactions. Dynamic timing.
 */
@@ -233,11 +228,6 @@ class SingleSiteDynLoadGen : public LoadGen
     int thread_count_;
     vector<double> wait_times_;
 };
-
-
-
-/* TODO: Create new subclass of LoadGen for that perform Put/Expect/RMW transactions. Ideally,
-   include a parameter that can adjust the ratio of Put/Expect v RMW transactions  */
 
 /*
     Performs SingleSiteReadOnly/SingleSiteWriteOnly/Multipartition transactions with Dynamic timing. 
@@ -432,8 +422,6 @@ void Benchmark(const vector<LoadGen*>& lg, int dbsize)
     }
 }
 
-/* TODO: Add new Put/Expect and Put/Expect/RMW modify tests to the benchmarks below  */
-
 int main(int argc, char** argv)
 {
     cout << "\t\t-------------------------------------------------------------------" << endl;
@@ -446,10 +434,10 @@ int main(int argc, char** argv)
     
     cout << "\t\t            Low contention SingleSite Read/Write (6 records)" << endl;
     cout << "\t\t-------------------------------------------------------------------" << endl;
-    lg.push_back(new SingleSiteLoadGen(1000000, 5, 0.0001, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteLoadGen(1000000, 5, 0.001, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteLoadGen(1000000, 5, 0.01, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteDynLoadGen(1000000, 5, {0.0001, 0.001, 0.01}, 50, 50, PARTITION_THREAD_COUNT));
+    lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.0001, 50, 50, PARTITION_THREAD_COUNT));
+    lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.001, 50, 50, PARTITION_THREAD_COUNT));
+    lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.01, 50, 50, PARTITION_THREAD_COUNT));
+    lg.push_back(new SingleSiteDynLoadGen(1000000, 6, {0.0001, 0.001, 0.01}, 50, 50, PARTITION_THREAD_COUNT));
     
 
     Benchmark(lg, 1000000);

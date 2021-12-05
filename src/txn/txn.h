@@ -116,7 +116,7 @@ class Txn
     pthread_cond_t h_store_subplan_cond_;
 
     // H-Store partition threads that have yet to respond back to Command Router
-    deque<StaticThreadPool*> hstore_pending_partition_threads_;
+    set<StaticThreadPool*> hstore_pending_partition_threads_;
 
     // Flag that checks if any partition thread aborted a multipartition transaction
     volatile bool hstore_is_aborted_;

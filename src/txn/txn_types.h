@@ -24,9 +24,6 @@ class Noop : public Txn
 // Reads all keys in the map 'm', if all results correspond to the values in
 // the provided map, commits, else aborts.
 
-/* TODO: Modify Expect to take in a second parameter k, where 0 ≤ k < n. Expect
-   will always acreate a read_set that contains keys across k partitions.       */
-
 class Expect : public Txn
 {
    public:
@@ -57,7 +54,6 @@ class Expect : public Txn
         {
             if (!Read(it->first, &result) || result != it->second)
             {
-                // TODO: Remove abort
                 ABORT;
             }
         }
@@ -95,9 +91,6 @@ class Put : public Txn
 };
 
 // Read-modify-write transaction.
-
-/* TODO: Modify RMW to take in a new parameter k, where 0 ≤ k < n. Expect
-   will always acreate a read_set that contains keys across k partitions        */
 
 class RMW : public Txn
 {
@@ -156,6 +149,27 @@ class RMW : public Txn
         // Make sure the max partitions requested is <= thread_count
         if (k > thread_count) {
             k = thread_count;
+        }
+
+        // If Txn is single-site
+        if (k == 1)
+        {
+            this->hstore_is_multipartition_transaction_ = false;
+        }
+        // Otherwise Txn is multisite. Randomly divide these into one-shot and multi-partition
+        else
+        {
+            int key = rand() % 2;
+
+            // Divide into one-shot and multi-partition txn with 50/50 split
+            if (key  == 0)
+            {
+                this->hstore_is_multipartition_transaction_ = false;
+            }
+            else 
+            {
+                this->hstore_is_multipartition_transaction_ = true;
+            }
         }
 
         // Make sure we can find enough unique keys.

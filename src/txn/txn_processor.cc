@@ -667,12 +667,27 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
         txn->hstore_pending_partition_threads_.insert(GetPartitionThreadPool(*it));
     }
 
+    // Acquire locks for each partition thread
+    for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+    {
+        StaticThreadPool* tp = *it;
+        tp->mutex_.Lock();
+    }
+
     // Coordinate transactions with partition threads
     for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
     {
         StaticThreadPool* tp = *it;
         tp->AddTask([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, tp); });
     }
+
+    // Release locks for each partition thread
+    for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+    {
+        StaticThreadPool* tp = *it;
+        tp->mutex_.Unlock();
+    }
+
     pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 
     // Wait for responses from all partition threads

@@ -73,6 +73,8 @@ class StaticThreadPool : public ThreadPool
 
     int GetIndex() { return hstore_index_; }
 
+    Mutex mutex_;
+
    private:
     void Start()
     {

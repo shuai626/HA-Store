@@ -175,7 +175,11 @@ class RMW : public Txn
         // Make sure we can find enough unique keys.
         DCHECK(dbsize >= readsetsize + writesetsize);
     
-        int chunk_size = dbsize / thread_count;
+        double chunk_size_double = ((double) dbsize) / (double ) (thread_count);
+        int chunk_size = (dbsize + ((thread_count + 1)/2) ) / thread_count;
+        
+        double calc = 0;
+
         // Create set with k different values. 
         set<int> partitions;
         vector<int> v;
@@ -183,7 +187,8 @@ class RMW : public Txn
         while (counter < k) 
         {
             int key = rand() % dbsize;
-            int index = key / chunk_size;
+            calc = ((double) key) / chunk_size_double;
+            int index = (int) calc;
 
             if (partitions.find(index) == partitions.end()) 
             {
@@ -207,7 +212,8 @@ class RMW : public Txn
                 int index = v.at(count_across);
                 do 
                 {
-                    key = (rand() % chunk_size) + (index * chunk_size);
+                    calc = ((double)index ) * chunk_size_double;
+                    key = (rand() % (chunk_size) ) + (int) calc;
                 } while (readset_.count(key) || writeset_.count(key));
                 writeset_.insert(key);
 
@@ -220,7 +226,8 @@ class RMW : public Txn
                 int index = v.at(rand() % k);
                 do
                 {
-                    key = (rand() % chunk_size) + (index * chunk_size);
+                    calc = ((double)index ) * chunk_size_double;
+                    key = (rand() % (chunk_size) ) + (int) calc;
                 } while (readset_.count(key) || writeset_.count(key));
                 writeset_.insert(key);
             }
@@ -236,7 +243,8 @@ class RMW : public Txn
                 int index = v.at(count_across);
                 do 
                 {
-                    key = (rand() % chunk_size) + (index * chunk_size);
+                    calc = ((double)index ) * chunk_size_double;
+                    key = (rand() % (chunk_size) ) + (int) calc;
                 } while (readset_.count(key) || writeset_.count(key));
                 readset_.insert(key);
 
@@ -248,7 +256,8 @@ class RMW : public Txn
                 int index = v.at(rand() % k);
                 do
                 {
-                    key = (rand() % chunk_size) + (index * chunk_size);
+                    calc = ((double)index ) * chunk_size_double;
+                    key = (rand() % (chunk_size) ) + (int) calc;
                 } while (readset_.count(key) || writeset_.count(key));
 
                 readset_.insert(key);

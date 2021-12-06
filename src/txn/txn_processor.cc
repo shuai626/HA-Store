@@ -621,8 +621,9 @@ void TxnProcessor::RunMVCCScheduler()
 // Return the partition thread that owns a given key
 StaticThreadPool* TxnProcessor::GetPartitionThreadPool(Key key) 
 {
-    uint64 chunk_size = (uint64) (dbsize_ / partition_thread_count_);
-    uint64 index = key / chunk_size;
+    double chunk_size = ((double) dbsize_) /( (double) partition_thread_count_); 
+    double calc = ((double)key) / chunk_size;
+    uint64 index = (int ) calc;
 
     return partition_threads_[index];
 }

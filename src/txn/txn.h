@@ -123,6 +123,9 @@ class Txn
 
     // Flag that checks if any partition thread aborted a multipartition transaction
     volatile bool hstore_is_aborted_;
+
+
+    volatile bool hstore_is_first_phase_multitxn_;
 };
 
 #endif  // _TXN_H_

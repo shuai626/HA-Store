@@ -10,8 +10,10 @@
 // Thread & queue counts for StaticThreadPool initialization.
 #define THREAD_COUNT 8
 
+// wait time for basic strategy
 #define BASIC_WAIT_TIME       100
-#define ITERMEDIATE_WAIT_TIME 200
+
+#define ADVANCED_H_STORE_ON   0
 
 TxnProcessor::TxnProcessor(CCMode mode, int dbsize, int partition_thread_count) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
 {
@@ -783,39 +785,48 @@ void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, int partition)
     pthread_cond_signal(&txn->h_store_subplan_cond_);
     pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 
-    //basic strategy
-    if(strategy_ == 0) {
-
-
-    //intermediate strategy
-    }else if (strategy_ == 1) {
-
-    //advanced strategy
-    }else if (strategy_ == 2) { 
-
+    //if always using advance strategy
+    if (ADVANCED_H_STORE_ON){
+        HStoreAdvancedExecuteTxn(Txn* txn, int partitions);
+    } else {
+        //basic strategy
+        if(strategy_ == 0) {
+            HStoreBasicExecuteTxn(txn, partition, BASIC_WAIT_TIME);
+        //intermediate strategy
+        }else if (strategy_ == 1) {
+            HStoreBasicExecuteTxn(txn, partition, BASIC_WAIT_TIME*2);
+        //advanced strategy
+        }else if (strategy_ == 2) { 
+            HStoreAdvancedExecuteTxn(Txn* txn, int partitions);
+        }
     }
-/*
-If strategy_ = 0: Implement basic H-Store concurrency control
-    For Put() and Expect():
-        Commits the transaction and place results inside finished queue
-            Only interact with keys in readset_ and writeset_ inside the provided partition
-    For RMW():
-        Hold the txn for X time. 
-        If any txns come in during X time that have a lower timestamp than X, then abort. 
-            Check timestamp by reading all values in queue after X time.
-                Implement a new function inside static_thread_pool.h to accomplish this: IsMostRecentTxn(txn)
-        Else, execute the next subplans sent in by the command router. we do not need to hold the subplan again (PENDING)
-            Edit: we may need to hold the subplan again. Pending discussion
-        Each thread then sends its decision back to the Command Router.
-            Use txn->hstore_subplan_mutex_, and txn->h_store_subplan_cond_ to accomplish this
-        Waits for a response back from the command router of whether to commit/abort. 
-        If commit, then place results inside a finished queue
-If strategy = 1: Implement intermediate H-Store concurrency control 
-    Double X to increase wait time
-If strategy = 2: Implement advanced H-store concurrency control
-    When running subplan, if plan breaks OCC then abort.
-        Start timestamp is the timestamp received upon entering the system.
-    If commit, then place results inside a finished queue
-*/
+
+
 }
 
+void TxnProcessor::HStoreBasicExecuteTxn(Txn* txn, int partition, int wait_time){
+
+    
+    // For Put() and Expect():
+    //     Commits the transaction and place results inside finished queue
+    //         Only interact with keys in readset_ and writeset_ inside the provided partition
+    // For RMW():
+    //     Hold the txn for X time. 
+    //     If any txns come in during X time that have a lower timestamp than X, then abort. 
+    //         Check timestamp by reading all values in queue after X time.
+    //             Implement a new function inside static_thread_pool.h to accomplish this: IsMostRecentTxn(txn)
+    //     Else, execute the next subplans sent in by the command router. we do not need to hold the subplan again (PENDING)
+    //         Edit: we may need to hold the subplan again. Pending discussion
+    //     Each thread then sends its decision back to the Command Router.
+    //         Use txn->hstore_subplan_mutex_, and txn->h_store_subplan_cond_ to accomplish this
+    //     Waits for a response back from the command router of whether to commit/abort. 
+    //     If commit, then place results inside a finished queue
+
+}
+
+void TxnProcessor::HStoreAdvancedExecuteTxn(Txn* txn, int partition){
+// If strategy = 2: Implement advanced H-store concurrency control
+//     When running subplan, if plan breaks OCC then abort.
+//         Start timestamp is the timestamp received upon entering the system.
+//     If commit, then place results inside a finished queue
+}

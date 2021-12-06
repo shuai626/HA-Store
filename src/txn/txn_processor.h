@@ -179,6 +179,8 @@ class TxnProcessor
 
     // Number of partition threads
     int partition_thread_count_;
+
+    
 };
 
 #endif  // _TXN_PROCESSOR_H_

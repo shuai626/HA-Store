@@ -12,6 +12,7 @@ class Mutex
    public:
     /// Mutexes come into the world unlocked.
     Mutex() { pthread_mutex_init(&mutex_, NULL); }
+    ~Mutex() { pthread_mutex_destroy(&mutex_); }
     /// Locks a mutex. Blocks until the mutex has been successfully acquired.
     inline void Lock() { pthread_mutex_lock(&mutex_); }
     /// Attempts to lock a mutex. If the mutex is not already locked, locks the

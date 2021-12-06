@@ -23,7 +23,7 @@ using std::pair;
 class StaticThreadPool : public ThreadPool
 {
    public:
-    StaticThreadPool(int nthreads) : thread_count_(nthreads), stopped_(false) { Start(); }
+    StaticThreadPool(int nthreads) : thread_count_(nthreads), stopped_(false), hstore_index_(-1) { Start(); }
     StaticThreadPool(int nthreads, int index) : thread_count_(nthreads), stopped_(false), hstore_index_(index) { Start(); }
     ~StaticThreadPool()
     {

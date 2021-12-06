@@ -122,10 +122,12 @@ class Txn
     set<StaticThreadPool*> hstore_pending_partition_threads_;
 
     // Flag for txn class type: false = single-site/one-shot/sterile, true = multipartition
-    bool hstore_is_multipartition_transaction_;
+    volatile bool hstore_is_multipartition_transaction_;
 
     // Flag that checks if any partition thread aborted a multipartition transaction
     volatile bool hstore_is_aborted_;
+
+    volatile bool hstore_commit_abort_;
 };
 
 #endif  // _TXN_H_

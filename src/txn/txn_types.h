@@ -24,9 +24,6 @@ class Noop : public Txn
 // Reads all keys in the map 'm', if all results correspond to the values in
 // the provided map, commits, else aborts.
 
-/* TODO: Modify Expect to take in a second parameter k, where 0 ≤ k < n. Expect
-   will always acreate a read_set that contains keys across k partitions.       */
-
 class Expect : public Txn
 {
    public:
@@ -57,7 +54,6 @@ class Expect : public Txn
         {
             if (!Read(it->first, &result) || result != it->second)
             {
-                // TODO: Remove abort
                 ABORT;
             }
         }
@@ -95,9 +91,6 @@ class Put : public Txn
 };
 
 // Read-modify-write transaction.
-
-/* TODO: Modify RMW to take in a new parameter k, where 0 ≤ k < n. Expect
-   will always acreate a read_set that contains keys across k partitions        */
 
 class RMW : public Txn
 {
@@ -158,10 +151,35 @@ class RMW : public Txn
             k = thread_count;
         }
 
+        // If Txn is single-site
+        if (k == 1)
+        {
+            this->hstore_is_multipartition_transaction_ = false;
+        }
+        // Otherwise Txn is multisite. Randomly divide these into one-shot and multi-partition
+        else
+        {
+            int key = rand() % 2;
+
+            // Divide into one-shot and multi-partition txn with 50/50 split
+            if (key  == 0)
+            {
+                this->hstore_is_multipartition_transaction_ = false;
+            }
+            else 
+            {
+                this->hstore_is_multipartition_transaction_ = true;
+            }
+        }
+
         // Make sure we can find enough unique keys.
         DCHECK(dbsize >= readsetsize + writesetsize);
     
-        int chunk_size = dbsize / thread_count;
+        double chunk_size_double = ((double) dbsize) / (double ) (thread_count);
+        int chunk_size = (dbsize + ((thread_count + 1)/2) ) / thread_count;
+        
+        double calc = 0;
+
         // Create set with k different values. 
         set<int> partitions;
         vector<int> v;
@@ -169,7 +187,8 @@ class RMW : public Txn
         while (counter < k) 
         {
             int key = rand() % dbsize;
-            int index = key / chunk_size;
+            calc = ((double) key) / chunk_size_double;
+            int index = (int) calc;
 
             if (partitions.find(index) == partitions.end()) 
             {
@@ -193,7 +212,8 @@ class RMW : public Txn
                 int index = v.at(count_across);
                 do 
                 {
-                    key = (rand() % chunk_size) + (index * chunk_size);
+                    calc = ((double)index ) * chunk_size_double;
+                    key = (rand() % (chunk_size) ) + (int) calc;
                 } while (readset_.count(key) || writeset_.count(key));
                 writeset_.insert(key);
 
@@ -206,7 +226,8 @@ class RMW : public Txn
                 int index = v.at(rand() % k);
                 do
                 {
-                    key = (rand() % chunk_size) + (index * chunk_size);
+                    calc = ((double)index ) * chunk_size_double;
+                    key = (rand() % (chunk_size) ) + (int) calc;
                 } while (readset_.count(key) || writeset_.count(key));
                 writeset_.insert(key);
             }
@@ -222,7 +243,8 @@ class RMW : public Txn
                 int index = v.at(count_across);
                 do 
                 {
-                    key = (rand() % chunk_size) + (index * chunk_size);
+                    calc = ((double)index ) * chunk_size_double;
+                    key = (rand() % (chunk_size) ) + (int) calc;
                 } while (readset_.count(key) || writeset_.count(key));
                 readset_.insert(key);
 
@@ -234,7 +256,8 @@ class RMW : public Txn
                 int index = v.at(rand() % k);
                 do
                 {
-                    key = (rand() % chunk_size) + (index * chunk_size);
+                    calc = ((double)index ) * chunk_size_double;
+                    key = (rand() % (chunk_size) ) + (int) calc;
                 } while (readset_.count(key) || writeset_.count(key));
 
                 readset_.insert(key);

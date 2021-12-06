@@ -23,7 +23,8 @@ using std::pair;
 class StaticThreadPool : public ThreadPool
 {
    public:
-    StaticThreadPool(int nthreads) : thread_count_(nthreads), stopped_(false) { Start(); }
+    StaticThreadPool(int nthreads) : thread_count_(nthreads), stopped_(false), hstore_index_(-1) { Start(); }
+    StaticThreadPool(int nthreads, int index) : thread_count_(nthreads), stopped_(false), hstore_index_(index) { Start(); }
     ~StaticThreadPool()
     {
         stopped_ = true;
@@ -47,14 +48,32 @@ class StaticThreadPool : public ThreadPool
         }
     }
 
+    virtual void AddTaskToFront(const Task& task)
+    {
+        assert(!stopped_);
+        while (!queues_[rand() % thread_count_].PushFrontNonBlocking(task))
+        {
+        }
+    }
+
     virtual int ThreadCount() { return thread_count_; }
 
     /* TODO: Add new public method that checks if the queue contains tasks 
        with timestamp earlier than currTxn. Use hstore_start_time_ as timestamp */
-    void GetMostRecentTxnTimestamp() 
+    bool GetMostRecentTxnTimestamp(time_t time) 
     {
         // No-OP
+
+        // true if you can commit
+
+        // false if you can't
+
+        return false;
     }
+
+    int GetIndex() { return hstore_index_; }
+
+    Mutex mutex_;
 
    private:
     void Start()
@@ -128,6 +147,9 @@ class StaticThreadPool : public ThreadPool
     vector<AtomicQueue<Task>> queues_;
 
     bool stopped_;
+
+    int hstore_index_;
+    int hstore_timestamp_;
 };
 
 #endif  // _DB_UTILS_STATIC_THREAD_POOL_H_

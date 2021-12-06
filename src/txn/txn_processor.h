@@ -105,12 +105,10 @@ class TxnProcessor
     // The logic in this returns the threadpool (single thread) for the correct partition given a key
     StaticThreadPool* GetPartitionThreadPool(Key key);
 
-    int GetPartitionIndex(StaticThreadPool* tp);
-
     // The following functions are for H-Store
     void HStoreExecuteTxn(Txn* txn);
 
-    void HStorePartitionThreadExecuteTxn(Txn* txn, int partition);
+    void HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* partition);
 
     void GarbageCollection();
 
@@ -172,7 +170,7 @@ class TxnProcessor
     volatile int strategy_;
 
     // Abort count to determine strategy for H_STORE concurrency implementation
-    Atomic<int> abort_count_;
+    int abort_count_;
 
     // Size of the database for the current test.
     int dbsize_;

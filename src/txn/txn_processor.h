@@ -108,7 +108,9 @@ class TxnProcessor
     // The following functions are for H-Store
     void HStoreExecuteTxn(Txn* txn);
 
-    void HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* partition);
+    void HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* tp);
+
+    void HStoreBasicExecuteTxn(Txn* txn, StaticThreadPool* tp, int wait_time);
 
     void GarbageCollection();
 
@@ -178,7 +180,7 @@ class TxnProcessor
     // Number of partition threads
     int partition_thread_count_;
 
-    
+
 };
 
 #endif  // _TXN_PROCESSOR_H_

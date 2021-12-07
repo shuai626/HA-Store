@@ -129,6 +129,7 @@ class Txn
 
 
     volatile bool hstore_is_first_phase_multitxn_;
+    
     volatile bool hstore_commit_abort_;
 };
 

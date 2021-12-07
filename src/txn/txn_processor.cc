@@ -10,6 +10,7 @@
 // Thread & queue counts for StaticThreadPool initialization.
 #define THREAD_COUNT 8
 
+<<<<<<< HEAD
 // wait time for basic strategy
 #define BASIC_WAIT_TIME        100
 #define INTERMEDIATE_WAIT_TIME 200
@@ -18,6 +19,10 @@
 #define ADVANCED_H_STORE_ON         0
 #define INTERMEDIATE_PLAN_THRESHOLD 5
 #define ADVANCED_PLAN_THRESHOLD     10
+=======
+#define INTERMEDIATE_PLAN_THRESHOLD 0.1
+#define ADVANCED_PLAN_THRESHOLD 0.2
+>>>>>>> cfd5e5e363d604aa30e7ec414da708ccacb91eac
 
 TxnProcessor::TxnProcessor(CCMode mode, int dbsize, int partition_thread_count) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
 {
@@ -711,15 +716,23 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
         {
             pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
             // Increase abort count and change strategy, if needed
+            mutex_.Lock();
             this->abort_count_++;
+            mutex_.Unlock();
 
-            if (this->abort_count_ > ADVANCED_PLAN_THRESHOLD)
+            double abort_ratio = (this->abort_count_) / (this->abort_count_ + committed_txns_.Size());
+
+            if (abort_ratio > ADVANCED_PLAN_THRESHOLD)
             {
                 this->strategy_ = 2;
             }
-            else if (this->abort_count_ > INTERMEDIATE_PLAN_THRESHOLD)
+            else if (abort_ratio > INTERMEDIATE_PLAN_THRESHOLD)
             {
                 this->strategy_ = 1;
+            }
+            else
+            {
+                this->strategy_ = 0;
             }
 
             // Cleanup txn
@@ -776,7 +789,6 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     // Transaction commits, so add to finished queue and commited txn list
     txn->status_ = COMMITTED;
 
-
     mutex_.Lock();
     committed_txns_.Push(txn);
 
@@ -784,8 +796,23 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     txn_results_.Push(txn);
     mutex_.Unlock();
 
+    // Update H-Store strategy
+    double abort_ratio = (this->abort_count_) / (this->abort_count_ + committed_txns_.Size() + 1);
 
+    if (abort_ratio > ADVANCED_PLAN_THRESHOLD)
+    {
+        this->strategy_ = 2;
+    }
+    else if (abort_ratio > INTERMEDIATE_PLAN_THRESHOLD)
+    {
+        this->strategy_ = 1;
+    }
+    else
+    {
+        this->strategy_ = 0;
+    }
 }
+
 /*simulate a 100 ms wait time by running a for loop*/
 private hold(int time){
     double begin = GetTime();

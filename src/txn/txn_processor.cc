@@ -785,7 +785,7 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     mutex_.Unlock();
 
     // Update H-Store strategy
-    double abort_ratio = (this->abort_count_) / (this->abort_count_ + committed_txns_.Size() + 1);
+    double abort_ratio = (this->abort_count_) / (this->abort_count_ + committed_txns_.Size());
 
     if (abort_ratio > ADVANCED_PLAN_THRESHOLD)
     {

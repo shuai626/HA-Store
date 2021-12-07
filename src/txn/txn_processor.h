@@ -110,7 +110,15 @@ class TxnProcessor
 
     void HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* tp);
 
-    void HStoreBasicExecuteTxn(Txn* txn, StaticThreadPool* tp, int wait_time);
+    void HStoreMultiPartitionExecuteTxn(Txn* txn, StaticThreadPool* tp);
+
+    void HStoreRemovePartitionThread(Txn* txn, StaticThreadPool* tp);
+
+    void HStoreExecuteReads(Txn* txn, StaticThreadPool* tp);
+
+    void HStoreRun(Txn* txn, StaticThreadPool* tp);
+
+    void hold(int wait_time);
 
     void GarbageCollection();
 

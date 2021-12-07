@@ -34,7 +34,7 @@ class Txn
 
     // Method containing all the transaction's method logic.
     virtual void Run() = 0;
-
+    
     // Returns the Txn's current execution status.
     TxnStatus Status() { return status_; }
     // Checks for overlap in read and write sets. If any key appears in both,

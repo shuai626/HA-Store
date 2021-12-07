@@ -10,19 +10,17 @@
 // Thread & queue counts for StaticThreadPool initialization.
 #define THREAD_COUNT 8
 
-<<<<<<< HEAD
-// wait time for basic strategy
+// wait time for different strategies
 #define BASIC_WAIT_TIME        100
 #define INTERMEDIATE_WAIT_TIME 200
 #define ADVANCED_WAIT_TIME     100
-
-#define ADVANCED_H_STORE_ON         0
-#define INTERMEDIATE_PLAN_THRESHOLD 5
-#define ADVANCED_PLAN_THRESHOLD     10
-=======
+//Advanved H store on/off
+#define ADVANCED_H_STORE_ON    0
+//
+#define HSTORE_TXN_DURATION     100
+//abort thresholds
 #define INTERMEDIATE_PLAN_THRESHOLD 0.1
-#define ADVANCED_PLAN_THRESHOLD 0.2
->>>>>>> cfd5e5e363d604aa30e7ec414da708ccacb91eac
+#define ADVANCED_PLAN_THRESHOLD     0.2
 
 TxnProcessor::TxnProcessor(CCMode mode, int dbsize, int partition_thread_count) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
 {
@@ -657,6 +655,7 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
 {
     // Initialize txn->occ_start_idx_ and txn->h_store_timestamp_
     txn->occ_start_idx_ = committed_txns_.Size();
+    txn->hstore_start_time_ = time(NULL);
     
 
     // Initialize mutex and cond for inter-thread communication
@@ -791,7 +790,7 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
 
     mutex_.Lock();
     committed_txns_.Push(txn);
-
+    ApplyWrites(txn);
     // Update relevant data structure
     txn_results_.Push(txn);
     mutex_.Unlock();
@@ -813,29 +812,7 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     }
 }
 
-/*simulate a 100 ms wait time by running a for loop*/
-private hold(int time){
-    double begin = GetTime();
-    while (GetTime() - begin < time)
-    {
-        for (int i = 0; i < 1000; i++)
-        {
-            int x = 100;
-            x     = x + 2;
-            x     = x * x;
-        }
-    }
-}
 
-/**/
-private void TxnProcessor::HStoreRemovePartitionThread(Txn* txn, StaticThreadPool* tp) {
-
-    pthread_mutex_lock(&txn->hstore_subplan_mutex_);
-    txn->hstore_pending_partition_threads_.erase(tp);
-    pthread_cond_broadcast(&txn->h_store_subplan_cond_);
-    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
-
-}
 
 /* TODO: Implement logic that each partition thread performs. Assume each partition
    contains a thread pool with 1 thread inside it. Task submission and retrieval is abstracted away.
@@ -847,29 +824,20 @@ void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* t
 
     /*if its single sited or one shot -> execute and commit*/
     if(txn->hstore_is_multipartition_transaction_) {
-        //execute reads
-        //execute writes
-        //remove the tp from the pool and 
-        HStoreRemovePartitionThread(Txn* txn, StaticThreadPool* tp);
+        //EXECUTE READS
+        HStoreExecuteReads(txn, tp);
+        //EXECUTE WRITES/RUN
+        HStoreRun(txn, tp);
+        //removes tp and notifies the worker thread
+        HStoreRemovePartitionThread(txn, tp);
 
     /*else go through different concurrency strategies*/
     }else {
-
+        HStoreMultiPartitionExecuteTxn(txn, tp);
     }
-
-
-
-    //if always using advance strategy
-    if (ADVANCED_H_STORE_ON){
-
-
-
-
-
-
 }
 
-void TxnProcessor::HStoreExecuteTxn(Txn* txn, StaticThreadPool* tp){
+void TxnProcessor::HStoreMultiPartitionExecuteTxn(Txn* txn, StaticThreadPool* tp){
     int wait_time = 0;
     if (txn->hstore_is_first_phase_multitxn_){
         //Hold the txn for X time depending on stragey 
@@ -883,26 +851,53 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn, StaticThreadPool* tp){
         
         hold(wait_time);
 
+        vector<void*> recent_txns;
         //create empty vector to pass into getMostRecent
-
+        tp->GetMostRecentTxnTimestamp(txn->hstore_start_time_, &recent_txns);
         //Check strategy and advanced flag and accordingly do validation
-        //if basic or intermediate: If any txns come in during X time that have a lower timestamp than X, then abort (set is_aborted to true)
-        // if always advanced or advanced: call OCC function (the txn, txn *[]) 
-        // abort case: erase tp, set is_aborted to true and return
+        if(ADVANCED_H_STORE_ON || strategy_ == 2){
+            // if always advanced or advanced: do OCC validation  
+            bool valid = true;
+
+            int i ;
+            // Validation phase:
+            // Check overlap with each record whose key appears in the txn's read and write sets
+            for (i = 0; i < recent_txns.size(); i++)
+            {
+                Txn* prev_txn = (Txn *)recent_txns[i];
+
+                for (Key write_key : prev_txn->writeset_)
+                {
+                    if (txn->readset_.count(write_key) > 0)
+                    {
+                        valid = false;
+                    }
+                }
+            }
+            if(!valid){
+                txn->hstore_is_aborted_ =  true;
+                //erase tp and return
+                HStoreRemovePartitionThread(txn,tp);
+                return;
+            }            
 
 
-        //Else: 
-        //execute reads -> CHECK THIS IF THINGS DIE//
-        pthread_mutex_lock(&txn->hstore_subplan_mutex_);
-        // Remove a partition thread from the deque
-        // This can be any arbitrary thread
-        //     Each thread then sends its decision back to the Command Router.return -> 
-        //     involves remove tp : Use txn->hstore_subplan_mutex_, and txn->h_store_subplan_cond_ to accomplish this
-        /*if its single sited or one shot -> execute and commit*/
-        txn->hstore_pending_partition_threads_.erase(tp);
-        pthread_cond_broadcast(&txn->h_store_subplan_cond_);
-        pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+        }else {
+            //txns come in during X time that have a lower timestamp than current transaction
+            if(recent_txns.size() != 0){
+                txn->hstore_is_aborted_ =  true;
+                //erase tp and return
+                HStoreRemovePartitionThread(txn,tp);
+                return;
+            }
 
+        }
+    
+        //DO READS
+        HStoreExecuteReads(txn, tp);
+        //erase tp
+        HStoreRemovePartitionThread( txn,tp);
+        //wait to receive msg from worker on commit or abort
         pthread_mutex_lock(&txn->hstore_commit_abort_mutex_);
         while (!txn->hstore_commit_abort_)
         {
@@ -911,20 +906,101 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn, StaticThreadPool* tp){
         }
 
         pthread_mutex_unlock(&txn->hstore_commit_abort_mutex_);
-        //check if(is_aborted) -> abort
+        //if worker responds with abort, abort
+        if(txn->hstore_is_aborted_){
+            //need to do anything special here?
+        }
+
+    
     }else {
-        //run one shot stuff
-        //remove tp
-        //execute writes/run
-        pthread_mutex_lock(&txn->hstore_subplan_mutex_);
-        // Remove a partition thread from the deque
-        // This can be any arbitrary thread
-        txn->hstore_pending_partition_threads_.erase(tp);
-        pthread_cond_broadcast(&txn->h_store_subplan_cond_);
-        pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+        //DO RUN
+        HStoreRun(txn, tp);
+        //erase tp and return
+        HStoreRemovePartitionThread(txn, tp);
     }
 
 }
 
 
 
+/*HSTORE HELPERS*/
+
+
+
+/*simulate a 100 ms wait time by running a for loop*/
+void hold(int time){
+    double begin = GetTime();
+    while (GetTime() - begin < time)
+    {
+        for (int i = 0; i < 1000; i++)
+        {
+            int x = 100;
+            x     = x + 2;
+            x     = x * x;
+        }
+    }
+}
+
+/*erase tp*/
+void TxnProcessor::HStoreRemovePartitionThread(Txn* txn, StaticThreadPool* tp) {
+
+    pthread_mutex_lock(&txn->hstore_subplan_mutex_);
+    txn->hstore_pending_partition_threads_.erase(tp);
+    pthread_cond_broadcast(&txn->h_store_subplan_cond_);
+    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+
+}
+
+void TxnProcessor::HStoreExecuteReads(Txn* txn, StaticThreadPool* tp){
+    int partition = tp->GetIndex();
+    int partition_count = THREAD_COUNT;
+    // Read everything in from readset in the partition.
+    for (set<Key>::iterator it = txn->readset_.begin(); it != txn->readset_.end(); ++it)
+    {
+        // Save each read result iff record exists in storage and is in the paritition.
+        Value result;
+        if((*it > (dbsize_/ partition_count)*partition) && (*it < (dbsize_/ partition_count)*(partition+1))){
+            if (storage_->Read(*it, &result)) txn->reads_[*it] = result;
+        }
+        
+    }
+
+    // Also read everything in from writeset.
+    for (set<Key>::iterator it = txn->writeset_.begin(); it != txn->writeset_.end(); ++it)
+    {
+        // Save each read result iff record exists in storage and is in the partition.
+        Value result = 0;
+        if((*it > (dbsize_/ partition_count)*partition) && (*it < (dbsize_/ partition_count)*(partition+1))){
+            if (storage_->Read(*it, &result)) txn->reads_[*it] = result;
+        }
+    }
+}
+
+
+void TxnProcessor::HStoreRun(Txn* txn, StaticThreadPool* tp){
+        int partition = tp->GetIndex();
+        int partition_count = THREAD_COUNT;
+        Value result = 0;
+        // Read everything in readset.
+        for (set<Key>::iterator it = txn->readset_.begin(); it != txn->readset_.end(); ++it){
+            if((*it > (dbsize_/ partition_count)*partition) && (*it < (dbsize_/ partition_count)*(partition+1))){
+                txn->Read(*it, &result);
+            }
+
+        } 
+
+        // Run while loop to simulate the txn logic(duration is time_).
+        hold(HSTORE_TXN_DURATION );
+
+        // Increment length of everything in writeset.
+        for (set<Key>::iterator it = txn->writeset_.begin(); it != txn->writeset_.end(); ++it)
+        {
+            result = 0;
+            if((*it > (dbsize_/ partition_count)*partition) && (*it < (dbsize_/ partition_count)*(partition+1))){
+                txn->Read(*it, &result);
+                txn->Write(*it, result + 1);
+            }
+        }
+
+        //COMMIT;  
+}

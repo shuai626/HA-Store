@@ -10,8 +10,8 @@
 // Thread & queue counts for StaticThreadPool initialization.
 #define THREAD_COUNT 8
 
-#define INTERMEDIATE_PLAN_THRESHOLD 5
-#define ADVANCED_PLAN_THRESHOLD 10
+#define INTERMEDIATE_PLAN_THRESHOLD 0.1
+#define ADVANCED_PLAN_THRESHOLD 0.2
 
 TxnProcessor::TxnProcessor(CCMode mode, int dbsize, int partition_thread_count) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
 {
@@ -704,15 +704,23 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
         {
             pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
             // Increase abort count and change strategy, if needed
+            mutex_.Lock();
             this->abort_count_++;
+            mutex_.Unlock();
 
-            if (this->abort_count_ > ADVANCED_PLAN_THRESHOLD)
+            double abort_ratio = (this->abort_count_) / (this->abort_count_ + committed_txns_.Size());
+
+            if (abort_ratio > ADVANCED_PLAN_THRESHOLD)
             {
                 this->strategy_ = 2;
             }
-            else if (this->abort_count_ > INTERMEDIATE_PLAN_THRESHOLD)
+            else if (abort_ratio > INTERMEDIATE_PLAN_THRESHOLD)
             {
                 this->strategy_ = 1;
+            }
+            else
+            {
+                this->strategy_ = 0;
             }
 
             // Cleanup txn
@@ -730,6 +738,7 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
             // Ask all threads to abort the transaction
             // Partition threads will all see that hstore_is_aborted is true and ABORT
             pthread_mutex_lock(&txn->hstore_commit_abort_mutex_);
+            txn->hstore_commit_abort_ = true;
             pthread_cond_broadcast(&txn->hstore_commit_abort_cond_);
             pthread_mutex_unlock(&txn->hstore_commit_abort_mutex_);
         }
@@ -768,28 +777,27 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     // Transaction commits, so add to finished queue and commited txn list
     txn->status_ = COMMITTED;
 
-    if (txn->status_ == COMMITTED) 
-    {
-        mutex_.Lock();
-        committed_txns_.Push(txn);
+    mutex_.Lock();
+    committed_txns_.Push(txn);
 
-        // Update relevant data structure
-        txn_results_.Push(txn);
-        mutex_.Unlock();
+    // Update relevant data structure
+    txn_results_.Push(txn);
+    mutex_.Unlock();
+
+    // Update H-Store strategy
+    double abort_ratio = (this->abort_count_) / (this->abort_count_ + committed_txns_.Size() + 1);
+
+    if (abort_ratio > ADVANCED_PLAN_THRESHOLD)
+    {
+        this->strategy_ = 2;
     }
-    else 
+    else if (abort_ratio > INTERMEDIATE_PLAN_THRESHOLD)
     {
-        // Cleanup txn
-        txn->reads_.clear();
-        txn->writes_.clear();
-        txn->status_ = INCOMPLETE;
-
-        // Completely restart the transaction.
-        mutex_.Lock();
-        txn->unique_id_ = next_unique_id_;
-        next_unique_id_++;
-        txn_requests_.Push(txn);
-        mutex_.Unlock();
+        this->strategy_ = 1;
+    }
+    else
+    {
+        this->strategy_ = 0;
     }
 }
 

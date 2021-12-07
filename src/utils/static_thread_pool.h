@@ -48,6 +48,18 @@ class StaticThreadPool : public ThreadPool
         }
     }
 
+    virtual void AddTask(const Task& task, time_t timestamp, void* txn)
+    {
+        assert(!stopped_);
+        while (!queues_[rand() % thread_count_].PushNonBlocking(task))
+        {
+        }
+        secondary_mutex_.Lock();
+        txn_queue_.push_back(txn);
+        time_queue_.push_back(timestamp);
+        secondary_mutex_.Unlock();
+    }
+
     virtual void AddTaskToFront(const Task& task)
     {
         assert(!stopped_);
@@ -56,24 +68,45 @@ class StaticThreadPool : public ThreadPool
         }
     }
 
+    virtual void AddTaskToFront(const Task& task, time_t timestamp, void* txn)
+    {
+        assert(!stopped_);
+        while (!queues_[rand() % thread_count_].PushFrontNonBlocking(task))
+        {
+        }
+        secondary_mutex_.Lock();
+        txn_queue_.push_back(txn);
+        time_queue_.push_back(timestamp);
+        secondary_mutex_.Unlock();
+    }
+
     virtual int ThreadCount() { return thread_count_; }
 
     /* TODO: Add new public method that checks if the queue contains tasks 
        with timestamp earlier than currTxn. Use hstore_start_time_ as timestamp */
-    bool GetMostRecentTxnTimestamp(time_t time) 
+    void GetMostRecentTxnTimestamp(time_t time, vector<void*>* res) 
     {
-        // No-OP
+        secondary_mutex_.Lock();
 
-        // true if you can commit
+        for (int i = 0; i < txn_queue_.size(); i++)
+        {
+            if (time_queue_[i] <= time)
+            {
+                res->push_back(txn_queue_[i]);
+            }
+        }
 
-        // false if you can't
-
-        return false;
+        secondary_mutex_.Unlock();
     }
 
     int GetIndex() { return hstore_index_; }
 
     Mutex mutex_;
+
+    Mutex secondary_mutex_;
+
+    vector<void*> txn_queue_;
+    vector<time_t> time_queue_;
 
    private:
     void Start()
@@ -115,6 +148,17 @@ class StaticThreadPool : public ThreadPool
         {
             if (tp->queues_[queue_id].PopNonBlocking(&task))
             {
+                if (tp->GetIndex() >= 0)
+                {
+                    tp->secondary_mutex_.Lock();
+                    if (tp->txn_queue_.size() > 0)
+                    {
+                        tp->txn_queue_.erase(tp->txn_queue_.begin());
+                        tp->time_queue_.erase(tp->time_queue_.begin());
+                    }
+                    tp->secondary_mutex_.Unlock();
+                }
+
                 task();
                 // Reset backoff.
                 sleep_duration = 1;

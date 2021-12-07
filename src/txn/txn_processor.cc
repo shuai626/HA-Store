@@ -679,7 +679,7 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
     {
         StaticThreadPool* tp = *it;
-        tp->AddTask([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, tp); });
+        tp->AddTask([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, tp); }, txn->hstore_start_time_, txn);
     }
 
     // Release locks for each partition thread
@@ -746,7 +746,7 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
             for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
             {
                 StaticThreadPool* tp = *it;
-                tp->AddTaskToFront([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, tp); });
+                tp->AddTaskToFront([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, tp); }, txn->hstore_start_time_, txn);
             }
             pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 

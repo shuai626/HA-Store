@@ -11,11 +11,13 @@
 #define THREAD_COUNT 8
 
 // wait time for basic strategy
-#define BASIC_WAIT_TIME       100
+#define BASIC_WAIT_TIME        100
+#define INTERMEDIATE_WAIT_TIME 200
+#define ADVANCED_WAIT_TIME     100
 
-#define ADVANCED_H_STORE_ON   0
+#define ADVANCED_H_STORE_ON         0
 #define INTERMEDIATE_PLAN_THRESHOLD 5
-#define ADVANCED_PLAN_THRESHOLD 10
+#define ADVANCED_PLAN_THRESHOLD     10
 
 TxnProcessor::TxnProcessor(CCMode mode, int dbsize, int partition_thread_count) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
 {
@@ -784,6 +786,29 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
 
 
 }
+/*simulate a 100 ms wait time by running a for loop*/
+private hold(int time){
+    double begin = GetTime();
+    while (GetTime() - begin < time)
+    {
+        for (int i = 0; i < 1000; i++)
+        {
+            int x = 100;
+            x     = x + 2;
+            x     = x * x;
+        }
+    }
+}
+
+/**/
+private void TxnProcessor::HStoreRemovePartitionThread(Txn* txn, StaticThreadPool* tp) {
+
+    pthread_mutex_lock(&txn->hstore_subplan_mutex_);
+    txn->hstore_pending_partition_threads_.erase(tp);
+    pthread_cond_broadcast(&txn->h_store_subplan_cond_);
+    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+
+}
 
 /* TODO: Implement logic that each partition thread performs. Assume each partition
    contains a thread pool with 1 thread inside it. Task submission and retrieval is abstracted away.
@@ -793,35 +818,23 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
 void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* tp)
 {
 
-    
-
     /*if its single sited or one shot -> execute and commit*/
-    //if one shot or single site
-    //execute reads and then the transaction
-    pthread_mutex_lock(&txn->hstore_subplan_mutex_);
-    // Remove a partition thread from the deque
-    // This can be any arbitrary thread
-    //Run
-    txn->hstore_pending_partition_threads_.erase(tp);
-    pthread_cond_broadcast(&txn->h_store_subplan_cond_);
-    pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
+    if(txn->hstore_is_multipartition_transaction_) {
+        //execute reads
+        //execute writes
+        //remove the tp from the pool and 
+        HStoreRemovePartitionThread(Txn* txn, StaticThreadPool* tp);
 
     /*else go through different concurrency strategies*/
+    }else {
+
+    }
+
+
+
     //if always using advance strategy
     if (ADVANCED_H_STORE_ON){
-       
-    } else {
-        //basic strategy
-        if(strategy_ == 0) {
-            HStoreBasicExecuteTxn(txn, tp, BASIC_WAIT_TIME);
-        //intermediate strategy
-        }else if (strategy_ == 1) {
-            HStoreBasicExecuteTxn(txn, tp, BASIC_WAIT_TIME*2);
-        //advanced strategy
-        }else if (strategy_ == 2) { 
-            HStoreBasicExecuteTxn(txn, tp, BASIC_WAIT_TIME);
-        }
-    }
+
 
 
 
@@ -829,11 +842,21 @@ void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* t
 
 }
 
-void TxnProcessor::HStoreBasicExecuteTxn(Txn* txn, StaticThreadPool* tp, int wait_time){
-
+void TxnProcessor::HStoreExecuteTxn(Txn* txn, StaticThreadPool* tp){
+    int wait_time = 0;
     if (txn->hstore_is_first_phase_multitxn_){
-        //Hold the txn for X time. -> write helper
-        // 
+        //Hold the txn for X time depending on stragey 
+        if (strategy_ == 0) {
+            wait_time = BASIC_WAIT_TIME;
+        }else if (strategy_ == 1) {
+            wait_time = INTERMEDIATE_WAIT_TIME;
+        }else {
+            wait_time = ADVANCED_WAIT_TIME;
+        }
+        
+        hold(wait_time);
+
+        //create empty vector to pass into getMostRecent
 
         //Check strategy and advanced flag and accordingly do validation
         //if basic or intermediate: If any txns come in during X time that have a lower timestamp than X, then abort (set is_aborted to true)

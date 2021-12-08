@@ -193,7 +193,6 @@ class StaticThreadPool : public ThreadPool
     bool stopped_;
 
     int hstore_index_;
-    int hstore_timestamp_;
 };
 
 #endif  // _DB_UTILS_STATIC_THREAD_POOL_H_

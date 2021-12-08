@@ -8,6 +8,7 @@
 
 #include "utils/static_thread_pool.h"
 #include "utils/common.h"
+#include "utils/mutex.h"
 
 using std::map;
 using std::set;
@@ -131,6 +132,8 @@ class Txn
     volatile bool hstore_is_first_phase_multitxn_;
     
     volatile bool hstore_commit_abort_;
+
+    Mutex mutex_;
 };
 
 #endif  // _TXN_H_

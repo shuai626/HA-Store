@@ -17,7 +17,7 @@
 #define ADVANCED_WAIT_TIME     0.005
 
 // Advanved H store on/off
-#define ADVANCED_H_STORE_ON    1
+#define ADVANCED_H_STORE_ON    0
 
 // Abort thresholds
 #define INTERMEDIATE_PLAN_THRESHOLD 0.05

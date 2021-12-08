@@ -118,7 +118,7 @@ class TxnProcessor
 
     void HStoreRun(Txn* txn, StaticThreadPool* tp);
 
-    void hold(int wait_time);
+    void hold(double wait_time);
 
     void GarbageCollection();
 

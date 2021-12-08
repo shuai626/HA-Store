@@ -7,6 +7,25 @@
 
 #define PARTITION_THREAD_COUNT 8
 
+#include <stdio.h>
+#include <execinfo.h>
+#include <signal.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+void handler(int sig) {
+  void *array[10];
+  size_t size;
+
+  // get void*'s for all entries on the stack
+  size = backtrace(array, 10);
+
+  // print out all the frames to stderr
+  fprintf(stderr, "Error: signal %d:\n", sig);
+  backtrace_symbols_fd(array, size, STDERR_FILENO);
+  exit(1);
+}
+
 // Returns a human-readable string naming of the providing mode.
 string ModeToString(CCMode mode)
 {
@@ -35,7 +54,7 @@ class LoadGen
 {
    public:
     virtual ~LoadGen() {}
-    virtual Txn* NewTxn() = 0;
+    virtual Txn* NewTxn() = 0; 
 };
 
 class RMWLoadGen : public LoadGen
@@ -405,6 +424,7 @@ void Benchmark(const vector<LoadGen*>& lg, int dbsize)
 
                 throughput[round] = txn_count / (end - start);
 
+                std::cout << std::endl;
                 for (auto it = doneTxns.begin(); it != doneTxns.end(); ++it)
                 {
                     delete *it;
@@ -424,6 +444,9 @@ void Benchmark(const vector<LoadGen*>& lg, int dbsize)
 
 int main(int argc, char** argv)
 {
+    signal(SIGSEGV, handler);   // install our handler
+    signal(SIGABRT, handler);   // install our handler
+    
     cout << "\t\t-------------------------------------------------------------------" << endl;
     cout << "\t\t                Average Transaction Duration" << endl;
     cout << "\t\t-------------------------------------------------------------------" << endl;
@@ -432,26 +455,26 @@ int main(int argc, char** argv)
 
     vector<LoadGen*> lg;
     
-    cout << "\t\t            Low contention SingleSite Read/Write (6 records)" << endl;
-    cout << "\t\t-------------------------------------------------------------------" << endl;
-    lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.0001, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.001, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.01, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteDynLoadGen(1000000, 6, {0.0001, 0.001, 0.01}, 50, 50, PARTITION_THREAD_COUNT));
+    // cout << "\t\t            Low contention SingleSite Read/Write (6 records)" << endl;
+    // cout << "\t\t-------------------------------------------------------------------" << endl;
+    // lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.0001, 50, 50, PARTITION_THREAD_COUNT));
+    // lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.001, 50, 50, PARTITION_THREAD_COUNT));
+    // lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.01, 50, 50, PARTITION_THREAD_COUNT));
+    // lg.push_back(new SingleSiteDynLoadGen(1000000, 6, {0.0001, 0.001, 0.01}, 50, 50, PARTITION_THREAD_COUNT));
     
 
-    Benchmark(lg, 1000000);
-    cout << endl;
+    // Benchmark(lg, 1000000);
+    // cout << endl;
 
-    for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
-        lg.clear();
+    // for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+    //     lg.clear();
 
-    cout << "\t\t            High contention SingleSite Read/Write (6 records)" << endl;
-    cout << "\t\t-------------------------------------------------------------------" << endl;
-    lg.push_back(new SingleSiteLoadGen(100, 6, 0.0001, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteLoadGen(100, 6, 0.001, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteLoadGen(100, 6, 0.01, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteDynLoadGen(100, 6, {0.0001, 0.001, 0.01}, 50, 50, PARTITION_THREAD_COUNT));
+    // cout << "\t\t            High contention SingleSite Read/Write (6 records)" << endl;
+    // cout << "\t\t-------------------------------------------------------------------" << endl;
+    // lg.push_back(new SingleSiteLoadGen(100, 6, 0.0001, 50, 50, PARTITION_THREAD_COUNT));
+    // lg.push_back(new SingleSiteLoadGen(100, 6, 0.001, 50, 50, PARTITION_THREAD_COUNT));
+    // lg.push_back(new SingleSiteLoadGen(100, 6, 0.01, 50, 50, PARTITION_THREAD_COUNT));
+    // lg.push_back(new SingleSiteDynLoadGen(100, 6, {0.0001, 0.001, 0.01}, 50, 50, PARTITION_THREAD_COUNT));
     
     Benchmark(lg, 100);
     cout << endl;

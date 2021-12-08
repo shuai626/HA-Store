@@ -6,21 +6,22 @@
 #include <iostream>
 
 #include "lock_manager.h"
+#include "txn_types.h"
 
 // Thread & queue counts for StaticThreadPool initialization.
 #define THREAD_COUNT 8
 
 // wait time for different strategies
-#define BASIC_WAIT_TIME        100
-#define INTERMEDIATE_WAIT_TIME 200
-#define ADVANCED_WAIT_TIME     100
+#define BASIC_WAIT_TIME        0.1
+#define INTERMEDIATE_WAIT_TIME 0.2
+#define ADVANCED_WAIT_TIME     0.1
 //Advanved H store on/off
 #define ADVANCED_H_STORE_ON    0
 //
 #define HSTORE_TXN_DURATION     100
 //abort thresholds
-#define INTERMEDIATE_PLAN_THRESHOLD 0.1
-#define ADVANCED_PLAN_THRESHOLD     0.2
+#define INTERMEDIATE_PLAN_THRESHOLD 0.5
+#define ADVANCED_PLAN_THRESHOLD     0.6
 
 TxnProcessor::TxnProcessor(CCMode mode, int dbsize, int partition_thread_count) : mode_(mode), tp_(THREAD_COUNT), next_unique_id_(1)
 {
@@ -645,6 +646,9 @@ void TxnProcessor::RunHStoreScheduler()
         // Get the next new transaction request (if one is pending) and pass it to an execution thread.
         if (txn_requests_.Pop(&txn))
         {
+            this->mutex_.Lock();
+            std::cout << txn_requests_.Size() << " " << this->txn_results_.Size() << std::endl;
+            this->mutex_.Unlock();
             // Start txn running in its own thread.
             tp_.AddTask([this, txn]() { this->HStoreExecuteTxn(txn); });
         }
@@ -655,7 +659,7 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
 {
     // Initialize txn->occ_start_idx_ and txn->h_store_timestamp_
     txn->occ_start_idx_ = committed_txns_.Size();
-    txn->hstore_start_time_ = time(NULL);
+    // txn->hstore_start_time_ = time(NULL);
     
 
     // Initialize mutex and cond for inter-thread communication
@@ -714,37 +718,10 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
         if (txn->hstore_is_aborted_)
         {
             pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
-            // Increase abort count and change strategy, if needed
-            mutex_.Lock();
-            this->abort_count_++;
-            mutex_.Unlock();
 
-            double abort_ratio = (this->abort_count_) / (this->abort_count_ + committed_txns_.Size());
-
-            if (abort_ratio > ADVANCED_PLAN_THRESHOLD)
-            {
-                this->strategy_ = 2;
-            }
-            else if (abort_ratio > INTERMEDIATE_PLAN_THRESHOLD)
-            {
-                this->strategy_ = 1;
-            }
-            else
-            {
-                this->strategy_ = 0;
-            }
-
-            // Cleanup txn
             txn->reads_.clear();
             txn->writes_.clear();
-            txn->status_ = INCOMPLETE;
-
-            // Completely restart the transaction.
-            mutex_.Lock();
-            txn->unique_id_ = next_unique_id_;
-            next_unique_id_++;
-            txn_requests_.Push(txn);
-            mutex_.Unlock();            
+            txn->status_ = INCOMPLETE;  
 
             // Ask all threads to abort the transaction
             // Partition threads will continue procesing other tasks
@@ -752,6 +729,37 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
             txn->hstore_commit_abort_ = true;
             pthread_cond_broadcast(&txn->hstore_commit_abort_cond_);
             pthread_mutex_unlock(&txn->hstore_commit_abort_mutex_);
+
+            // Increase abort count and change strategy, if needed
+            mutex_.Lock();
+            this->abort_count_++;
+            double abort_ratio = ((double) this->abort_count_) / (double (this->abort_count_ + committed_txns_.Size()));
+            
+            // Completely restart the transaction.
+            // Cleanup txn
+            // txn->unique_id_ = next_unique_id_;
+            // next_unique_id_++;
+            // txn_requests_.Push(txn);
+            committed_txns_.Push(txn);
+            ApplyWrites(txn);
+            // Update relevant data structure
+            txn_results_.Push(txn);
+            mutex_.Unlock();
+
+            if (abort_ratio > ADVANCED_PLAN_THRESHOLD)
+            {
+                this->strategy_ = 2;
+            }
+            else if (abort_ratio > INTERMEDIATE_PLAN_THRESHOLD)
+            {   
+                this->strategy_ = 1;
+            }
+            else
+            {
+                this->strategy_ = 0;
+            }
+    
+            return;
         }
         else 
         {
@@ -793,17 +801,17 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     ApplyWrites(txn);
     // Update relevant data structure
     txn_results_.Push(txn);
+
+    double abort_ratio = ((double) this->abort_count_) / (double (this->abort_count_ + committed_txns_.Size()));
     mutex_.Unlock();
 
     // Update H-Store strategy
-    double abort_ratio = (this->abort_count_) / (this->abort_count_ + committed_txns_.Size() + 1);
-
     if (abort_ratio > ADVANCED_PLAN_THRESHOLD)
     {
         this->strategy_ = 2;
     }
     else if (abort_ratio > INTERMEDIATE_PLAN_THRESHOLD)
-    {
+    {   
         this->strategy_ = 1;
     }
     else
@@ -825,9 +833,12 @@ void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* t
     /*if its single sited or one shot -> execute and commit*/
     if(!(txn->hstore_is_multipartition_transaction_)) {
         //EXECUTE READS
-        HStoreExecuteReads(txn, tp);
+        // HStoreExecuteReads(txn, tp);
         //EXECUTE WRITES/RUN
-        HStoreRun(txn, tp);
+        // HStoreRun(txn, tp);
+
+        // hold(((RMW*) txn)->ReturnTxnTime());
+
         //removes tp and notifies the worker thread
         HStoreRemovePartitionThread(txn, tp);
 
@@ -838,7 +849,7 @@ void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* t
 }
 
 void TxnProcessor::HStoreMultiPartitionExecuteTxn(Txn* txn, StaticThreadPool* tp){
-    int wait_time = 0;
+    double wait_time = 0;
     if (txn->hstore_is_first_phase_multitxn_){
         //Hold the txn for X time depending on stragey 
         if (strategy_ == 0) {
@@ -875,6 +886,7 @@ void TxnProcessor::HStoreMultiPartitionExecuteTxn(Txn* txn, StaticThreadPool* tp
                 }
             }
             if(!valid){
+                std::cout << "WE ABORTED" << std::endl;
                 txn->hstore_is_aborted_ =  true;
                 //erase tp and return
                 HStoreRemovePartitionThread(txn,tp);
@@ -892,9 +904,12 @@ void TxnProcessor::HStoreMultiPartitionExecuteTxn(Txn* txn, StaticThreadPool* tp
             }
 
         }
+
+        
     
         //DO READS
-        HStoreExecuteReads(txn, tp);
+        // HStoreExecuteReads(txn, tp);
+        // hold(((RMW*) txn)->ReturnTxnTime()/2);
         //erase tp
         HStoreRemovePartitionThread( txn,tp);
         //wait to receive msg from worker on commit or abort
@@ -906,15 +921,10 @@ void TxnProcessor::HStoreMultiPartitionExecuteTxn(Txn* txn, StaticThreadPool* tp
         }
 
         pthread_mutex_unlock(&txn->hstore_commit_abort_mutex_);
-        //if worker responds with abort, abort
-        if(txn->hstore_is_aborted_){
-            //need to do anything special here?
-        }
-
-    
     }else {
         //DO RUN
-        HStoreRun(txn, tp);
+        // HStoreRun(txn, tp);
+        //  hold(((RMW*) txn)->ReturnTxnTime()/2);
         //erase tp and return
         HStoreRemovePartitionThread(txn, tp);
     }
@@ -928,11 +938,11 @@ void TxnProcessor::HStoreMultiPartitionExecuteTxn(Txn* txn, StaticThreadPool* tp
 
 
 /*simulate a 100 ms wait time by running a for loop*/
-void TxnProcessor::hold(int time){
+void TxnProcessor::hold(double time){
     double begin = GetTime();
     while (GetTime() - begin < time)
     {
-        for (int i = 0; i < 1000; i++)
+        for (int i = 0; i < 5; i++)
         {
             int x = 100;
             x     = x + 2;
@@ -954,13 +964,18 @@ void TxnProcessor::HStoreRemovePartitionThread(Txn* txn, StaticThreadPool* tp) {
 void TxnProcessor::HStoreExecuteReads(Txn* txn, StaticThreadPool* tp){
     int partition = tp->GetIndex();
     int partition_count = THREAD_COUNT;
+
+    double chunk_size = ((double) dbsize_) /( (double) partition_thread_count_);
+
     // Read everything in from readset in the partition.
     for (set<Key>::iterator it = txn->readset_.begin(); it != txn->readset_.end(); ++it)
     {
+        double calc = ((double) *it) / chunk_size;
+        uint64 index = (int) calc;
         // Save each read result iff record exists in storage and is in the paritition.
         Value result;
-        if((*it > (dbsize_ / partition_count)*partition) && (*it <= (dbsize_/ partition_count)*(partition+1))){
-            if (storage_->Read(*it, &result)) txn->reads_[*it] = result;
+        if(index == partition){
+            // if (storage_->Read(*it, &result)) txn->reads_[*it] = result;
         }
         
     }
@@ -968,10 +983,12 @@ void TxnProcessor::HStoreExecuteReads(Txn* txn, StaticThreadPool* tp){
     // Also read everything in from writeset.
     for (set<Key>::iterator it = txn->writeset_.begin(); it != txn->writeset_.end(); ++it)
     {
+        double calc = ((double) *it) / chunk_size;
+        uint64 index = (int) calc;
         // Save each read result iff record exists in storage and is in the partition.
         Value result = 0;
-        if((*it > (dbsize_/ partition_count)*partition) && (*it <= (dbsize_/ partition_count)*(partition+1))){
-            if (storage_->Read(*it, &result)) txn->reads_[*it] = result;
+        if(index == partition){
+            // if (storage_->Read(*it, &result)) txn->reads_[*it] = result;
         }
     }
 }
@@ -981,16 +998,22 @@ void TxnProcessor::HStoreRun(Txn* txn, StaticThreadPool* tp){
         int partition = tp->GetIndex();
         int partition_count = THREAD_COUNT;
         Value result = 0;
+
+        double chunk_size = ((double) dbsize_) /( (double) partition_thread_count_);
+
         // Read everything in readset.
         for (set<Key>::iterator it = txn->readset_.begin(); it != txn->readset_.end(); ++it){
-            if((*it > (dbsize_/ partition_count)*partition) && (*it <= (dbsize_/ partition_count)*(partition+1))){
+            double calc = ((double) *it) / chunk_size;
+            uint64 index = (int) calc;
+
+            if(index == partition){
                 txn->Read(*it, &result);
             }
 
         } 
 
         // Run while loop to simulate the txn logic(duration is time_).
-        hold(HSTORE_TXN_DURATION );
+        // hold(0.1);
 
         // Increment length of everything in writeset.
         for (set<Key>::iterator it = txn->writeset_.begin(); it != txn->writeset_.end(); ++it)
@@ -998,7 +1021,7 @@ void TxnProcessor::HStoreRun(Txn* txn, StaticThreadPool* tp){
             result = 0;
             if((*it > (dbsize_/ partition_count)*partition) && (*it <= (dbsize_/ partition_count)*(partition+1))){
                 txn->Read(*it, &result);
-                txn->Write(*it, result + 1);
+                // txn->Write(*it, result + 1);
             }
         }
 

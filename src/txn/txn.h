@@ -8,6 +8,7 @@
 
 #include "utils/static_thread_pool.h"
 #include "utils/common.h"
+#include "utils/mutex.h"
 
 using std::map;
 using std::set;
@@ -34,7 +35,7 @@ class Txn
 
     // Method containing all the transaction's method logic.
     virtual void Run() = 0;
-
+    
     // Returns the Txn's current execution status.
     TxnStatus Status() { return status_; }
     // Checks for overlap in read and write sets. If any key appears in both,
@@ -127,7 +128,12 @@ class Txn
     // Flag that checks if any partition thread aborted a multipartition transaction
     volatile bool hstore_is_aborted_;
 
+
+    volatile bool hstore_is_first_phase_multitxn_;
+    
     volatile bool hstore_commit_abort_;
+
+    Mutex mutex_;
 };
 
 #endif  // _TXN_H_

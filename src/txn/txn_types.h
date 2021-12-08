@@ -4,7 +4,7 @@
 #include <map>
 #include <set>
 #include <string>
-
+#include <time.h>
 #include "txn.h"
 
 // Immediately commits.
@@ -135,6 +135,8 @@ class RMW : public Txn
     // Creates a RMW across k partitions. readsetsize + writesetsize must be >= k. 
     RMW(int dbsize, int readsetsize, int writesetsize, int k, int thread_count,  double time = 0) : time_(time)
     {
+        this->hstore_start_time_ = std::time(NULL);
+           
         /*
             if k == 1 then
                 single site
@@ -303,6 +305,11 @@ class RMW : public Txn
         }
 
         COMMIT;
+    }    
+
+    double ReturnTxnTime()
+    {
+        return time_;
     }
 
    private:

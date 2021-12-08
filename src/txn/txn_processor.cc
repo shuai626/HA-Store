@@ -823,7 +823,7 @@ void TxnProcessor::HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* t
 {
 
     /*if its single sited or one shot -> execute and commit*/
-    if(txn->hstore_is_multipartition_transaction_) {
+    if(!(txn->hstore_is_multipartition_transaction_)) {
         //EXECUTE READS
         HStoreExecuteReads(txn, tp);
         //EXECUTE WRITES/RUN
@@ -959,7 +959,7 @@ void TxnProcessor::HStoreExecuteReads(Txn* txn, StaticThreadPool* tp){
     {
         // Save each read result iff record exists in storage and is in the paritition.
         Value result;
-        if((*it > (dbsize_ / partition_count)*partition) && (*it < (dbsize_/ partition_count)*(partition+1))){
+        if((*it > (dbsize_ / partition_count)*partition) && (*it <= (dbsize_/ partition_count)*(partition+1))){
             if (storage_->Read(*it, &result)) txn->reads_[*it] = result;
         }
         
@@ -970,7 +970,7 @@ void TxnProcessor::HStoreExecuteReads(Txn* txn, StaticThreadPool* tp){
     {
         // Save each read result iff record exists in storage and is in the partition.
         Value result = 0;
-        if((*it > (dbsize_/ partition_count)*partition) && (*it < (dbsize_/ partition_count)*(partition+1))){
+        if((*it > (dbsize_/ partition_count)*partition) && (*it <= (dbsize_/ partition_count)*(partition+1))){
             if (storage_->Read(*it, &result)) txn->reads_[*it] = result;
         }
     }
@@ -983,7 +983,7 @@ void TxnProcessor::HStoreRun(Txn* txn, StaticThreadPool* tp){
         Value result = 0;
         // Read everything in readset.
         for (set<Key>::iterator it = txn->readset_.begin(); it != txn->readset_.end(); ++it){
-            if((*it > (dbsize_/ partition_count)*partition) && (*it < (dbsize_/ partition_count)*(partition+1))){
+            if((*it > (dbsize_/ partition_count)*partition) && (*it <= (dbsize_/ partition_count)*(partition+1))){
                 txn->Read(*it, &result);
             }
 
@@ -996,7 +996,7 @@ void TxnProcessor::HStoreRun(Txn* txn, StaticThreadPool* tp){
         for (set<Key>::iterator it = txn->writeset_.begin(); it != txn->writeset_.end(); ++it)
         {
             result = 0;
-            if((*it > (dbsize_/ partition_count)*partition) && (*it < (dbsize_/ partition_count)*(partition+1))){
+            if((*it > (dbsize_/ partition_count)*partition) && (*it <= (dbsize_/ partition_count)*(partition+1))){
                 txn->Read(*it, &result);
                 txn->Write(*it, result + 1);
             }

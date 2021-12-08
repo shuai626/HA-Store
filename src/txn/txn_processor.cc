@@ -928,7 +928,7 @@ void TxnProcessor::HStoreMultiPartitionExecuteTxn(Txn* txn, StaticThreadPool* tp
 
 
 /*simulate a 100 ms wait time by running a for loop*/
-void hold(int time){
+void TxnProcessor::hold(int time){
     double begin = GetTime();
     while (GetTime() - begin < time)
     {
@@ -959,7 +959,7 @@ void TxnProcessor::HStoreExecuteReads(Txn* txn, StaticThreadPool* tp){
     {
         // Save each read result iff record exists in storage and is in the paritition.
         Value result;
-        if((*it > (dbsize_/ partition_count)*partition) && (*it < (dbsize_/ partition_count)*(partition+1))){
+        if((*it > (dbsize_ / partition_count)*partition) && (*it < (dbsize_/ partition_count)*(partition+1))){
             if (storage_->Read(*it, &result)) txn->reads_[*it] = result;
         }
         

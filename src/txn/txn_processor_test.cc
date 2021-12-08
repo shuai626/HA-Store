@@ -361,7 +361,7 @@ void Benchmark(const vector<LoadGen*>& lg, int dbsize)
     deque<Txn*> doneTxns;
 
     // For each MODE...
-    for (CCMode mode = SERIAL; mode <= H_STORE; mode = static_cast<CCMode>(mode + 1))
+    for (CCMode mode = H_STORE; mode <= H_STORE; mode = static_cast<CCMode>(mode + 1))
     {
         // Print out mode name.
         cout << ModeToString(mode) << flush;

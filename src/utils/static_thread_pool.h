@@ -60,26 +60,6 @@ class StaticThreadPool : public ThreadPool
         secondary_mutex_.Unlock();
     }
 
-    virtual void AddTaskToFront(const Task& task)
-    {
-        assert(!stopped_);
-        while (!queues_[rand() % thread_count_].PushFrontNonBlocking(task))
-        {
-        }
-    }
-
-    virtual void AddTaskToFront(const Task& task, time_t timestamp, void* txn)
-    {
-        assert(!stopped_);
-        while (!queues_[rand() % thread_count_].PushFrontNonBlocking(task))
-        {
-        }
-        secondary_mutex_.Lock();
-        txn_queue_.push_back(txn);
-        time_queue_.push_back(timestamp);
-        secondary_mutex_.Unlock();
-    }
-
     virtual int ThreadCount() { return thread_count_; }
 
     /* TODO: Add new public method that checks if the queue contains tasks 

@@ -110,7 +110,7 @@ class TxnProcessor
 
     void HStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* tp);
 
-    void HStoreMultiPartitionExecuteTxn(Txn* txn, StaticThreadPool* tp);
+    void HStoreAbort(Txn* txn);
 
     void HStoreRemovePartitionThread(Txn* txn, StaticThreadPool* tp);
 

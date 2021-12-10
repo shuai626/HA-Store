@@ -116,6 +116,9 @@ class Txn
     pthread_mutex_t hstore_subplan_mutex_;
     pthread_cond_t h_store_subplan_cond_;
 
+    pthread_mutex_t hstore_commit_abort_mutex_;
+    pthread_cond_t hstore_commit_abort_cond_;
+
     // H-Store partition threads that have yet to respond back to Command Router
     set<StaticThreadPool*> hstore_pending_partition_threads_;
 

@@ -40,7 +40,7 @@ class TxnProcessor
    public:
     // The TxnProcessor's constructor starts the TxnProcessor running in the
     // background.
-    explicit TxnProcessor(CCMode mode, int dbsize, int partition_thread_count);
+    explicit TxnProcessor(CCMode mode, int dbsize, double wait_time, int config, int partition_thread_count);
 
     // The TxnProcessor's destructor stops all background threads and deallocates
     // all objects currently owned by the TxnProcessor, except for Txn objects.
@@ -120,6 +120,13 @@ class TxnProcessor
 
     void hold(double wait_time);
 
+    // The following functions are for HF-Store
+    void HFStoreExecuteTxn(Txn* txn);
+
+    void HFStorePartitionThreadExecuteTxn(Txn* txn, StaticThreadPool* tp);
+
+    void HFStoreMultiPartitionExecuteTxn(Txn* txn, StaticThreadPool* tp);
+
     void GarbageCollection();
 
     // Concurrency control mechanism the TxnProcessor is currently using.
@@ -188,7 +195,9 @@ class TxnProcessor
     // Number of partition threads
     int partition_thread_count_;
 
+    double WAIT_TIME;
 
+    int ADVANCED_H_STORE_ON;
 };
 
 #endif  // _TXN_PROCESSOR_H_

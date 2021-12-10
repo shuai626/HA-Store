@@ -478,8 +478,6 @@ int main(int argc, char** argv)
     //Ratio 33/33/33 ss_read/ss_write/multipartition. 6 records so it's divided evenly betwwen read/write;
     cout << "\t\t           HA-STORE Varying MPT size (6 records): 100% MPT, 8 partition threads, 1 microsecond wait" << endl;
     cout << "\t\t-------------------------------------------------------------------" << endl;
-    
-    int arr[5] = {1,2,4,6,8};
 
     for (int i = 0; i < 5; i++)
     {   
@@ -499,8 +497,6 @@ int main(int argc, char** argv)
     //Ratio 33/33/33 ss_read/ss_write/multipartition. 6 records so it's divided evenly betwwen read/write;
     cout << "\t\t           HF-STORE Varying MPT size (6 records): 100% MPT, 8 partition threads, 1 microsecond wait" << endl;
     cout << "\t\t-------------------------------------------------------------------" << endl;
-    
-    int arr[5] = {1,2,4,6,8};
 
     for (int i = 0; i < 5; i++)
     {   

@@ -9,7 +9,7 @@
 #include "txn_types.h"
 
 // Thread & queue counts for StaticThreadPool initialization.
-#define THREAD_COUNT 8
+#define THREAD_COUNT 16
 
 // Wait time for different strategies in seconds
 #define BASIC_WAIT_TIME        0.000001
@@ -677,11 +677,11 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     }
 
     // Acquire locks for each partition thread
-    for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
-    {
-        StaticThreadPool* tp = *it;
-        tp->mutex_.Lock();
-    }
+    // for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+    // {
+    //     StaticThreadPool* tp = *it;
+    //     tp->mutex_.Lock();
+    // }
 
     // Coordinate transactions with partition threads
     for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
@@ -691,11 +691,11 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
     }
 
     // Release locks for each partition thread
-    for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
-    {
-        StaticThreadPool* tp = *it;
-        tp->mutex_.Unlock();
-    }
+    // for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+    // {
+    //     StaticThreadPool* tp = *it;
+    //     tp->mutex_.Unlock();
+    // }
 
     pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 
@@ -723,11 +723,11 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
         txn->hstore_is_first_phase_multitxn_ = false;
 
         // Acquire locks for each partition thread
-        for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
-        {
-            StaticThreadPool* tp = *it;
-            tp->mutex_.Lock();
-        }
+        // for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+        // {
+        //     StaticThreadPool* tp = *it;
+        //     tp->mutex_.Lock();
+        // }
 
         // Push task to queue
         for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
@@ -737,11 +737,11 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
         }
 
         // Release locks for each partition thread
-        for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
-        {
-            StaticThreadPool* tp = *it;
-            tp->mutex_.Unlock();
-        }
+        // for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+        // {
+        //     StaticThreadPool* tp = *it;
+        //     tp->mutex_.Unlock();
+        // }
         pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 
         // Wait for responses from all partition threads
@@ -906,7 +906,6 @@ void TxnProcessor::HStoreRemovePartitionThread(Txn* txn, StaticThreadPool* tp) {
     txn->hstore_pending_partition_threads_.erase(tp);
     pthread_cond_broadcast(&txn->h_store_subplan_cond_);
     pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
-
 }
 
 void TxnProcessor::HStoreExecuteReads(Txn* txn, StaticThreadPool* tp){

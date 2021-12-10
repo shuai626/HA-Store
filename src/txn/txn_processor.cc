@@ -12,9 +12,9 @@
 #define THREAD_COUNT 8
 
 // Wait time for different strategies in seconds
-#define BASIC_WAIT_TIME        0.00001
-#define INTERMEDIATE_WAIT_TIME 0.00002
-#define ADVANCED_WAIT_TIME     0.00001
+#define BASIC_WAIT_TIME        0.000001
+#define INTERMEDIATE_WAIT_TIME 0.000001
+#define ADVANCED_WAIT_TIME     0.000001
 
 // Advanved H store on/off
 #define ADVANCED_H_STORE_ON    0
@@ -722,11 +722,25 @@ void TxnProcessor::HStoreExecuteTxn(Txn* txn)
         }
         txn->hstore_is_first_phase_multitxn_ = false;
 
+        // Acquire locks for each partition thread
+        for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+        {
+            StaticThreadPool* tp = *it;
+            tp->mutex_.Lock();
+        }
+
         // Push task to queue
         for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
         {
             StaticThreadPool* tp = *it;
             tp->AddTask([this, txn, tp]() {this->HStorePartitionThreadExecuteTxn(txn, tp); }, txn->hstore_start_time_, txn);
+        }
+
+        // Release locks for each partition thread
+        for (std::set<StaticThreadPool*>::iterator it = txn->hstore_pending_partition_threads_.begin(); it != txn->hstore_pending_partition_threads_.end(); ++it)
+        {
+            StaticThreadPool* tp = *it;
+            tp->mutex_.Unlock();
         }
         pthread_mutex_unlock(&txn->hstore_subplan_mutex_);
 

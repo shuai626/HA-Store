@@ -5,6 +5,7 @@
 #include <set>
 #include <string>
 #include <time.h>
+#include <ctime>
 #include "txn.h"
 
 // Immediately commits.

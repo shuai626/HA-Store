@@ -5,9 +5,6 @@
 #include "txn/txn_types.h"
 #include "utils/testing.h"
 
-#define PARTITION_THREAD_COUNT 8
-#define num_partitions_for_mp 4
-
 #include <stdio.h>
 #include <execinfo.h>
 #include <signal.h>
@@ -374,7 +371,7 @@ class MultipartitionAndSingleSiteDynLoadGen : public LoadGen
 
 
 //Generates benchmark with a given database size
-void Benchmark(const vector<LoadGen*>& lg, int dbsize)
+void Benchmark(const vector<LoadGen*>& lg, int dbsize, double wait_time = 0.0000001, int config = 0, int PARTITION_THREAD_COUNT = 8)
 {
     // Number of transaction requests that can be active at any given time.
     int active_txns = 100;
@@ -395,7 +392,7 @@ void Benchmark(const vector<LoadGen*>& lg, int dbsize)
                 int txn_count = 0;
 
                 // Create TxnProcessor in next mode.
-                TxnProcessor* p = new TxnProcessor(mode, dbsize, PARTITION_THREAD_COUNT);
+                TxnProcessor* p = new TxnProcessor(mode, dbsize, wait_time, config, PARTITION_THREAD_COUNT);
 
                 // Record start time.
                 double start = GetTime();
@@ -424,7 +421,6 @@ void Benchmark(const vector<LoadGen*>& lg, int dbsize)
                 double end = GetTime();
 
                 throughput[round] = txn_count / (end - start);
-                std::cout << std::endl;
                 for (auto it = doneTxns.begin(); it != doneTxns.end(); ++it)
                 {
                     delete *it;
@@ -446,6 +442,9 @@ int main(int argc, char** argv)
 {
     signal(SIGSEGV, handler);
     signal(SIGABRT, handler);
+
+    int PARTITION_THREAD_COUNT = 8;
+    int num_partitions_for_mp  = 1;
     
     cout << "\t\t-------------------------------------------------------------------" << endl;
     cout << "\t\t                Average Transaction Duration" << endl;
@@ -454,20 +453,122 @@ int main(int argc, char** argv)
     cout << "\t\t-------------------------------------------------------------------" << endl;
 
     vector<LoadGen*> lg;
-    
-    cout << "\t\t            Low contention SingleSite Read/Write (6 records)" << endl;
-    cout << "\t\t-------------------------------------------------------------------" << endl;
-    lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.0001, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.001, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteLoadGen(1000000, 6, 0.01, 50, 50, PARTITION_THREAD_COUNT));
-    lg.push_back(new SingleSiteDynLoadGen(1000000, 6, {0.0001, 0.001, 0.01}, 50, 50, PARTITION_THREAD_COUNT));
-    
 
-    Benchmark(lg, 1000000);
-    cout << endl;
+    for (int j = 0; j < 3; j++)
+    {
+         //Ratio 33/33/33 ss_read/ss_write/multipartition. 6 records so it's divided evenly betwwen read/write;
+        cout << "\t\t           HSTORE" << j << "Varying MPT size (6 records): 100% MPT, 8 partition threads, 1 microsecond wait" << endl;
+        cout << "\t\t-------------------------------------------------------------------" << endl;
+        
+        int arr[5] = {1,2,4,6,8};
 
-    for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
-        lg.clear();
+        for (int i = 0; i < 5; i++)
+        {   
+            lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.0001, 0, 0, 100, arr[i], PARTITION_THREAD_COUNT));
+            lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.001, 0, 0, 100,  arr[i],  PARTITION_THREAD_COUNT));
+            lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.01, 0, 0, 100,  arr[i],  PARTITION_THREAD_COUNT));
+            lg.push_back(new MultipartitionAndSingleSiteDynLoadGen(1000000, 3, 3, {0.0001, 0.001, 0.01}, 0, 0, 100,  arr[i],  PARTITION_THREAD_COUNT));
+        }
+
+        Benchmark(lg, 1000000, 0.0000001, 1, 8);
+        cout << endl;
+
+        for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+            lg.clear();
+    }
+    
+    for (int j = 0; j < 3; j++)
+    {
+        cout << "\t\t           HSTORE" << j << " Varying Ratio size (6 records): 4 MPT, 8 partition threads, 1 microsecond wait" << endl;
+        cout << "\t\t-------------------------------------------------------------------" << endl;
+    
+        int arr1[11] = {100,90,80,70,60,50,40,30,20,10,0};
+
+        for (int i = 0; i < 11; i++)
+        {   
+            lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.0001, 0, arr1[i], 100, 4, PARTITION_THREAD_COUNT));
+            lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.001, 0, arr1[i], 100,  4,  PARTITION_THREAD_COUNT));
+            lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.01, 0, arr1[i], 100,  4,  PARTITION_THREAD_COUNT));
+            lg.push_back(new MultipartitionAndSingleSiteDynLoadGen(1000000, 3, 3, {0.0001, 0.001, 0.01}, 0, arr1[i], 100,  4,  PARTITION_THREAD_COUNT));
+        }
+
+        Benchmark(lg, 1000000, 0.0000001, j, 8);
+        cout << endl;
+
+        for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+            lg.clear();
+    }
+
+    for (int j = 0; j < 3; j++)
+    {
+        int arr1[2] = {100,90};
+        for (int k = 0; k < 2; k++)
+        {
+            cout << "\t\t           HSTORE" << j << "Varying PARTITION_THREAD_COUNT (6 records): 4 MPT, 1 microsecond wait " << arr1[k] << endl;
+            cout << "\t\t-------------------------------------------------------------------" << endl;
+
+            int arr2[6] = {1,2,4,8,16,32};
+
+            for  (int i = 0; i < 6; i++)
+            {   
+                lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.0001, 0, arr1[k], 100, 4, arr2[i]));
+                lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.001, 0, arr1[k], 100,  4,  arr2[i]));
+                lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.01, 0, arr1[k], 100,  4,  arr2[i]));
+                lg.push_back(new MultipartitionAndSingleSiteDynLoadGen(1000000, 3, 3, {0.0001, 0.001, 0.01}, 0, arr1[k], 100,  4,  arr2[i]));
+            }
+
+            Benchmark(lg, 1000000, 0.0000001, j, 8);
+            cout << endl;
+
+            for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+                lg.clear();
+        }
+    }   
+
+    for (int j = 0; j < 3; j++)
+    {
+        int arr1[2] = {100,90};
+        for (int k = 0; k < 2; k++)
+        {
+            cout << "\t\t           HSTORE" << j << "Varying WAIT_TIME (6 records): 4 MPT, 8 PARTITION_THREADS, RATIO: " << arr1[k] << endl;
+            cout << "\t\t-------------------------------------------------------------------" << endl;
+
+            double arr2[5] = {0.000001, 0.00001, 0.0001,0.001,0.01};
+
+            for  (int i = 0; i < 5; i++)
+            {   
+                std::cout << "WAIT TIME: " << arr2[i] << std::endl;
+                lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.0001, 0, arr1[k], 100, 4, 8));
+                lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.001, 0, arr1[k],  100, 4, 8));
+                lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.01, 0, arr1[k],  100, 4, 8));
+                lg.push_back(new MultipartitionAndSingleSiteDynLoadGen(1000000, 3, 3, {0.0001, 0.001, 0.01}, 0, arr1[k], 100, 4, 8));
+
+                Benchmark(lg, 1000000, arr2[i], j, 8);
+                cout << endl;
+
+                for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+                    lg.clear();
+            }
+        }
+    }   
+
+    int ratio[2] = {100,90};
+    for (int k = 0; k < 2; k++)
+    {
+        cout << "\t\t           ALL CONCURRENCY CONTROLS:  1 microsecond, 4 MPT, 8 PARTITION_THREADS, RATIO: " << ratio[k] << endl;
+        cout << "\t\t-------------------------------------------------------------------" << endl;
+
+        lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.0001, 0, ratio[k], 100, 4, 8));
+        lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.001, 0, ratio[k],  100, 4, 8));
+        lg.push_back(new MultipartitionAndSingleSiteLoadGen(1000000, 3, 3, 0.01, 0, ratio[k],  100, 4, 8));
+        lg.push_back(new MultipartitionAndSingleSiteDynLoadGen(1000000, 3, 3, {0.0001, 0.001, 0.01}, 0, ratio[k], 100, 4, 8));
+
+        Benchmark(lg, 1000000, 0.000001, 0, 8);
+        cout << endl;
+
+        for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
+            lg.clear();
+    }
 
     cout << "\t\t            High contention SingleSite Read/Write (6 records)" << endl;
     cout << "\t\t-------------------------------------------------------------------" << endl;

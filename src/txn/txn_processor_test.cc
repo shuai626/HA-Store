@@ -6,6 +6,7 @@
 #include "utils/testing.h"
 
 #define PARTITION_THREAD_COUNT 8
+#define num_partitions_for_mp 4
 
 #include <stdio.h>
 #include <execinfo.h>
@@ -380,7 +381,7 @@ void Benchmark(const vector<LoadGen*>& lg, int dbsize)
     deque<Txn*> doneTxns;
 
     // For each MODE...
-    for (CCMode mode = SERIAL; mode <= H_STORE; mode = static_cast<CCMode>(mode + 1))
+    for (CCMode mode = H_STORE; mode <= H_STORE; mode = static_cast<CCMode>(mode + 1))
     {
         // Print out mode name.
         cout << ModeToString(mode) << flush;
@@ -388,11 +389,9 @@ void Benchmark(const vector<LoadGen*>& lg, int dbsize)
         // For each experiment, run 2 times and get the average.
         for (uint32 exp = 0; exp < lg.size(); exp++)
         {
-            usleep(100000);
             double throughput[2];
             for (uint32 round = 0; round < 2; round++)
             {
-                usleep(100000);
                 int txn_count = 0;
 
                 // Create TxnProcessor in next mode.
@@ -425,7 +424,6 @@ void Benchmark(const vector<LoadGen*>& lg, int dbsize)
                 double end = GetTime();
 
                 throughput[round] = txn_count / (end - start);
-
                 std::cout << std::endl;
                 for (auto it = doneTxns.begin(); it != doneTxns.end(); ++it)
                 {
@@ -482,8 +480,6 @@ int main(int argc, char** argv)
     cout << endl;
     for (uint32 i = 0; i < lg.size(); i++) delete lg[i];
     lg.clear();
-
-    int num_partitions_for_mp = 8;
     
     //Ratio 33/33/33 ss_read/ss_write/multipartition. 6 records so it's divided evenly betwwen read/write;
     cout << "\t\t            Low contention SingleSite and Multipartition (6 records)" << endl;

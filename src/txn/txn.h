@@ -116,9 +116,6 @@ class Txn
     pthread_mutex_t hstore_subplan_mutex_;
     pthread_cond_t h_store_subplan_cond_;
 
-    pthread_mutex_t hstore_commit_abort_mutex_;
-    pthread_cond_t hstore_commit_abort_cond_;
-
     // H-Store partition threads that have yet to respond back to Command Router
     set<StaticThreadPool*> hstore_pending_partition_threads_;
 
@@ -127,8 +124,7 @@ class Txn
 
     // Flag that checks if any partition thread aborted a multipartition transaction
     volatile bool hstore_is_aborted_;
-
-
+    
     volatile bool hstore_is_first_phase_multitxn_;
     
     volatile bool hstore_commit_abort_;

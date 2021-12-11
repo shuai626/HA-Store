@@ -177,9 +177,9 @@ class RMW : public Txn
 
         // Make sure we can find enough unique keys.
         DCHECK(dbsize >= readsetsize + writesetsize);
-    
+
         double chunk_size_double = ((double) dbsize) / (double ) (thread_count);
-        int chunk_size = (dbsize + ((thread_count + 1)/2) ) / thread_count;
+        int chunk_size = (int) chunk_size_double;
         
         double calc = 0;
 

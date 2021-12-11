@@ -82,15 +82,15 @@ class StaticThreadPool : public ThreadPool
 
     virtual int ThreadCount() { return thread_count_; }
 
-    /* TODO: Add new public method that checks if the queue contains tasks 
+    /* Checks if the queue contains tasks 
        with timestamp earlier than currTxn. Use hstore_start_time_ as timestamp */
     void GetMostRecentTxnTimestamp(time_t time, vector<void*>* res) 
     {
         secondary_mutex_.Lock();
 
-        for (int i = 0; i < txn_queue_.size(); i++)
+        for (size_t i = 0; i < txn_queue_.size(); i++)
         {
-            if (time_queue_[i] <= time)
+            if (time_queue_[i] < time)
             {
                 res->push_back(txn_queue_[i]);
             }
@@ -175,6 +175,17 @@ class StaticThreadPool : public ThreadPool
                 // Go through ALL queues looking for a remaining task.
                 while (tp->queues_[queue_id].Pop(&task))
                 {
+
+                if (tp->GetIndex() >= 0)
+                {
+                    tp->secondary_mutex_.Lock();
+                    if (tp->txn_queue_.size() > 0)
+                        {
+                            tp->txn_queue_.erase(tp->txn_queue_.begin());
+                            tp->time_queue_.erase(tp->time_queue_.begin());
+                        }
+                        tp->secondary_mutex_.Unlock();
+                    }
                     task();
                 }
 
